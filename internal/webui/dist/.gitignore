@@ -1,6 +1,8 @@
-# Build output. Only the placeholder below is committed, so `go build` works in a
-# fresh clone without Node -- otherwise the go:embed directive has nothing to
-# match and the whole module fails to compile.
+# Build output. Nothing here is committed except this file.
+#
+# It exists so the directory does, because //go:embed all:dist refuses to
+# compile against a missing one -- and so a fresh clone builds without Node.
+# A binary built that way serves an explanatory page instead of the interface;
+# see serveIndex.
 *
 !.gitignore
-!index.html

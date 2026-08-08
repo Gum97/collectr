@@ -16,7 +16,11 @@ export default defineConfig({
     // reach outside its own directory, and copying in the Dockerfile would mean
     // a local `go build` embeds whatever was left there last.
     outDir: resolve(__dirname, '../internal/webui/dist'),
-    emptyOutDir: true,
+    // Left on: the output directory holds the .gitignore that keeps 900 KB of
+    // hashed assets out of the repository, and emptyOutDir deletes it. Stale
+    // assets are harmless here -- filenames carry a content hash and index.html
+    // names the current ones -- and the Docker build always starts clean.
+    emptyOutDir: false,
     rollupOptions: {
       input: {
         admin: resolve(__dirname, 'index.html'),
