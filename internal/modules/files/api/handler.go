@@ -24,6 +24,7 @@ type Handler struct {
 	forms    contracts.UploadResolver
 	pepper   []byte
 	fileHost string
+	lister   AttachmentLister
 }
 
 // New returns a Handler. fileHost is the origin attachments are served from.

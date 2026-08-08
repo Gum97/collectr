@@ -55,3 +55,16 @@ func TestInProjectHonoursTheGrant(t *testing.T) {
 		}
 	})
 }
+
+// TestAPIKeyWithoutProjectStaysTenantWide pins a regression the project-scope
+// fix introduced: an unscoped key is tenant-wide by definition, and treating it
+// as holding no project grants failed every InProject check -- locking out every
+// integration that had ever been issued one.
+func TestAPIKeyWithoutProjectStaysTenantWide(t *testing.T) {
+	t.Parallel()
+
+	a := NewActor(KindAPIKey, uuid.Nil, uuid.New(), nil, []string{CapFormRead})
+	if !a.InProject(uuid.New()) {
+		t.Error("unscoped API key refused a project in its own tenant")
+	}
+}

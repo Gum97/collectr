@@ -268,6 +268,7 @@ func run() error {
 	iamHandler := iamapi.New(iamSvc, db, auditWriter, cfg.Env != "dev", cfg.MFAGrace)
 
 	auth := authn.NewAuthenticator(db)
+	iamHandler.SetAuthenticator(auth)
 
 	public := http.NewServeMux()
 	public.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -299,6 +300,7 @@ func run() error {
 	writes := http.NewServeMux()
 	submitHandler.Register(writes)
 	fileHandler.Register(writes)
+	fileHandler.SetLister(filesstore.New(db))
 	throttled := limiter.Chain(
 		ratelimit.Rule{
 			Name: "public_write_ip", Limit: 60, Window: time.Minute,
@@ -330,7 +332,9 @@ func run() error {
 	iamHandler.RegisterAdmin(admin)
 	iamHandler.RegisterMembers(admin)
 	iamHandler.RegisterProjects(admin)
+	iamHandler.RegisterAPIKeys(admin)
 	iamHandler.RegisterRecoveryAdmin(admin)
+	fileHandler.RegisterAdmin(admin)
 	exportHandler.RegisterAdmin(admin)
 	webhookHandler.RegisterAdmin(admin)
 	// Either credential reaches the same handlers with the same rules; only the

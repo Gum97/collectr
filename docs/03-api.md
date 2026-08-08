@@ -205,6 +205,12 @@ POST   /api/v1/dsr/requests/{id}/fulfill   {action, note}
 
 GET    /api/v1/audit?cursor=&actor=&action=
 POST   /api/v1/audit/verify                → kiểm tra tính toàn vẹn hash chain
+
+GET    /api/v1/api-keys                    → danh sách key + quyền bị cấm cứng
+POST   /api/v1/api-keys                    → 201 {key}  HIỆN MỘT LẦN DUY NHẤT
+DELETE /api/v1/api-keys/{id}               → 204, thu hồi (giữ bản ghi cho audit)
+
+GET    /api/v1/forms/{id}/files            → tệp đã nhận (không kèm URL tải)
 ```
 
 ### UTM đi xuyên qua link rút gọn

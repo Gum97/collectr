@@ -28,6 +28,7 @@ type Handler struct {
 	db       *postgres.DB
 	audit    contracts.AuditWriter
 	secure   bool
+	auth     *authn.Authenticator
 }
 
 // New returns a Handler.
