@@ -51,9 +51,14 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+      # Installed with the module's own toolchain rather than downloaded as a
+      # prebuilt binary. The action ships one built against an older Go, and it
+      # refuses to load a module that declares a newer language version -- a
+      # failure about the linter, reported as a failure of the code.
+      - name: golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+          golangci-lint run --timeout=5m
 
   web:
     name: interface

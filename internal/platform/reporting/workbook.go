@@ -57,7 +57,7 @@ func NewWriter(columns []contracts.ExportColumn) (*Writer, error) {
 	if _, err := f.NewSheet("Dữ liệu"); err != nil {
 		return nil, fmt.Errorf("creating data sheet: %w", err)
 	}
-	f.SetSheetName("Sheet1", "Tổng quan")
+	_ = f.SetSheetName("Sheet1", "Tổng quan")
 
 	sw, err := f.NewStreamWriter("Dữ liệu")
 	if err != nil {

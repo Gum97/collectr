@@ -86,8 +86,10 @@ func (l *Local) Put(_ context.Context, key string, r io.Reader) (int64, error) {
 	}
 	tmpName := tmp.Name()
 	defer func() {
-		tmp.Close()
-		os.Remove(tmpName) // no-op once the rename has succeeded
+		// Both are cleanup after a possible failure: the file is already written
+		// or already renamed, and there is nobody left to tell.
+		_ = tmp.Close()
+		_ = os.Remove(tmpName) // no-op once the rename has succeeded
 	}()
 
 	n, err := io.Copy(tmp, r)

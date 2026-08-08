@@ -30,7 +30,7 @@ var dist embed.FS
 //
 // The public pages are rendered by Go but still load one hashed script, and the
 // hash changes on every build. They cannot embed the directory themselves --
-// go:embed does not reach outside its own package -- so the one package that
+// the embed directive does not reach outside its own package, so the one package that
 // does own it hands over a read-only view.
 func Assets() fs.FS {
 	sub, err := fs.Sub(dist, "dist")
@@ -60,7 +60,7 @@ func Handler() http.Handler {
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 
 		if f, err := sub.Open(name); err == nil {
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			if st, err := f.Stat(); err == nil && !st.IsDir() {
 				setCaching(w, name)
 				files.ServeHTTP(w, r)

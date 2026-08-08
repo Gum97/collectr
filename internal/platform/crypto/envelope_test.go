@@ -139,8 +139,20 @@ func TestShreddingIsIrreversible(t *testing.T) {
 	wrapped, _ := env.Wrap(dek)
 	blob, _ := SealWith(dek, []byte("sensitive answer"), nil)
 
+	// The key works first. Without this the test asserts that a nil key fails to
+	// unwrap, which would pass against an implementation that never worked at
+	// all -- it proves erasure only if there was something to erase.
+	recovered, err := env.Unwrap(wrapped)
+	if err != nil {
+		t.Fatalf("Unwrap before shredding: %v", err)
+	}
+	if plain, err := OpenWith(recovered, blob, nil); err != nil || string(plain) != "sensitive answer" {
+		t.Fatalf("OpenWith before shredding = %q, %v", plain, err)
+	}
+
 	// Erasure: the wrapped key is deleted. The ciphertext survives wherever it
-	// was copied to, which is the point -- backups included.
+	// was copied to -- which is the point, and also the limit: a backup taken
+	// before this moment still holds the wrapped key beside it.
 	wrapped = nil
 	if _, err := env.Unwrap(wrapped); !errors.Is(err, ErrShredded) {
 		t.Fatalf("Unwrap after shredding = %v, want ErrShredded", err)

@@ -190,7 +190,7 @@ func (s *Service) Open(ctx context.Context, fileID uuid.UUID) (store.File, []byt
 	if err != nil {
 		return store.File{}, nil, fmt.Errorf("reading object: %w", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	sealed, err := io.ReadAll(rc)
 	if err != nil {

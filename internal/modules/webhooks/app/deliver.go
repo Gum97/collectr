@@ -131,7 +131,7 @@ func (c *Client) Send(ctx context.Context, url string, secret []byte, eventType,
 	if err != nil {
 		return Result{Err: err}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseSnippet))
 	return Result{StatusCode: resp.StatusCode, Snippet: string(snippet)}

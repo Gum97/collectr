@@ -235,5 +235,5 @@ func isIPv4Compatible(v6 net.IP) bool {
 	}
 	// :: and ::1 are handled by the predicates above; anything else here is a
 	// v4 address written the old way.
-	return !(v6[12] == 0 && v6[13] == 0 && v6[14] == 0 && v6[15] <= 1)
+	return v6[12] != 0 || v6[13] != 0 || v6[14] != 0 || v6[15] > 1
 }

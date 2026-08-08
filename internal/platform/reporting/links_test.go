@@ -47,7 +47,7 @@ func TestWriteLinkReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("opening workbook: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	for _, want := range []string{"Tổng quan", "Link", "Nguồn & chiến dịch", "Nguồn gốc"} {
 		if idx, _ := f.GetSheetIndex(want); idx < 0 {
@@ -96,7 +96,7 @@ func TestLinkReportStatesTheRawWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("opening workbook: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	for _, sheet := range []string{"Tổng quan", "Nguồn & chiến dịch", "Nguồn gốc"} {
 		rows, err := f.GetRows(sheet)

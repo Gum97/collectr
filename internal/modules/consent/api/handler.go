@@ -229,7 +229,7 @@ func (h *Handler) createPurpose(w http.ResponseWriter, r *http.Request) {
 // two in the same pair of hands.
 func (h *Handler) listDocuments(w http.ResponseWriter, r *http.Request) {
 	actor, ok := authn.ActorFrom(r.Context())
-	if !ok || !(actor.Can(authn.CapConsentManage) || actor.Can(authn.CapAuditRead)) {
+	if !ok || (!actor.Can(authn.CapConsentManage) && !actor.Can(authn.CapAuditRead)) {
 		httpx.Error(w, r, http.StatusForbidden, "forbidden", "Insufficient permissions")
 		return
 	}
@@ -245,8 +245,8 @@ func (h *Handler) listDocuments(w http.ResponseWriter, r *http.Request) {
 // listPurposes returns the declared processing purposes.
 func (h *Handler) listPurposes(w http.ResponseWriter, r *http.Request) {
 	actor, ok := authn.ActorFrom(r.Context())
-	if !ok || !(actor.Can(authn.CapConsentManage) || actor.Can(authn.CapAuditRead) ||
-		actor.Can(authn.CapFormRead)) {
+	if !ok || (!actor.Can(authn.CapConsentManage) && !actor.Can(authn.CapAuditRead) &&
+		!actor.Can(authn.CapFormRead)) {
 		httpx.Error(w, r, http.StatusForbidden, "forbidden", "Insufficient permissions")
 		return
 	}

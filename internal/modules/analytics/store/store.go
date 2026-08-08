@@ -51,7 +51,7 @@ func (s *Store) InsertEvents(ctx context.Context, events []contracts.Event) (int
 	}
 
 	res := s.db.SendBatch(ctx, batch)
-	defer res.Close()
+	defer func() { _ = res.Close() }()
 
 	var inserted int64
 	for range events {

@@ -300,7 +300,7 @@ func (s *Service) Open(ctx context.Context, tenantID, id uuid.UUID) (store.Job, 
 	if err != nil {
 		return store.Job{}, nil, fmt.Errorf("reading export: %w", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	var buf bytes.Buffer
 	if _, err := buf.ReadFrom(rc); err != nil {

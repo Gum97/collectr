@@ -90,7 +90,7 @@ func (n *SMTPNotifier) Send(ctx context.Context, m Message) error {
 	if err != nil {
 		return fmt.Errorf("connecting to smtp server: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client, err := smtp.NewClient(conn, n.cfg.Host)
 	if err != nil {

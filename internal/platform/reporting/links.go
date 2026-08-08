@@ -18,8 +18,8 @@ import (
 // links. Sharing the code would mean a column model that fits neither.
 func WriteLinkReport(out io.Writer, r contracts.LinkReport, meta WorkbookMeta) error {
 	f := excelize.NewFile()
-	defer f.Close()
-	f.SetSheetName("Sheet1", "Tổng quan")
+	defer func() { _ = f.Close() }()
+	_ = f.SetSheetName("Sheet1", "Tổng quan")
 
 	clicks, submits := r.Totals()
 

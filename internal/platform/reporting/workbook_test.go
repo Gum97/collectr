@@ -53,7 +53,7 @@ func buildWorkbook(t *testing.T, rows []contracts.ExportRow, includeSensitive bo
 	if err != nil {
 		t.Fatalf("reopening workbook: %v", err)
 	}
-	t.Cleanup(func() { f.Close() })
+	t.Cleanup(func() { _ = f.Close() })
 	return f
 }
 

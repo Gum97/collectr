@@ -65,7 +65,7 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 			"Invalid request", map[string]any{"file": "a file part is required"})
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	uploaded, err := h.svc.Upload(r.Context(), app.UploadInput{
 		TenantID: fc.TenantID, ProjectID: fc.ProjectID,
