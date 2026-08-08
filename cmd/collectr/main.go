@@ -246,6 +246,11 @@ func run() error {
 		Log:      log,
 		BaseURL:  cfg.BaseURL,
 		SLA:      cfg.DSRSLA,
+		// The consent module holds the subject keys, so it is what opens a
+		// subject's own sealed answers for them. Law 91/2025 gives them the right
+		// to see the data; being sensitive is not one of the grounds it allows
+		// for refusing.
+		Opener: consentStore,
 	})
 	dsrHandler := dsrapi.New(dsrSvc, sessionSigner, cfg.Env != "dev")
 	dsrAdminHandler := dsrapi.NewAdmin(db, dsrstore.New(db), auditWriter)

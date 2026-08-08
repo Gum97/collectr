@@ -177,8 +177,12 @@ func (h *Handler) submissions(w http.ResponseWriter, r *http.Request) {
 			"form_version": s.VersionNo,
 			"answers":      s.Answers,
 			"questions":    s.Questions,
-			"submitted_at": s.SubmittedAt,
-			"status":       s.Status,
+			// Said out loud so the portal can tell the reader the difference
+			// between "you gave us nothing sensitive" and "we hold something we
+			// could not open for you".
+			"sensitive_unreadable": s.SensitiveUnreadable,
+			"submitted_at":         s.SubmittedAt,
+			"status":               s.Status,
 		})
 	}
 	httpx.JSON(w, r, http.StatusOK, map[string]any{"data": out})

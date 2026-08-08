@@ -267,6 +267,14 @@ type SubjectSubmission struct {
 	Visible     []string
 	SubmittedAt time.Time
 	Status      string
+	// SensitiveBlob is the sealed answers, still encrypted. The store does not
+	// hold the subject keys -- the consent module does -- so opening it belongs
+	// to the service, which reaches that module through a contract.
+	SensitiveBlob []byte
+	// SensitiveUnreadable marks a record whose sealed answers could not be
+	// opened. Distinct from having none: "we cannot show you this" and "there is
+	// nothing here" are different answers to a right-of-access request.
+	SensitiveUnreadable bool
 	// Questions maps a field id to how it was worded in the version this record
 	// was collected under. Answers are stored by id, and an id is meaningless to
 	// the person reading it: a subject exercising a right of access must see the
@@ -300,7 +308,7 @@ type versionSchema struct {
 func (s *Store) SubjectSubmissions(ctx context.Context, tenantID, subjectID uuid.UUID, onlyID *uuid.UUID) ([]SubjectSubmission, error) {
 	const q = `
 		SELECT s.id, f.title, v.version_no, s.answers, s.visible_fields, s.submitted_at,
-		       s.status, v.schema
+		       s.status, v.schema, s.answers_enc
 		FROM forms.submissions s
 		JOIN forms.forms f ON f.id = s.form_id
 		JOIN forms.form_versions v ON v.id = s.form_version_id
@@ -321,7 +329,8 @@ func (s *Store) SubjectSubmissions(ctx context.Context, tenantID, subjectID uuid
 			var sub SubjectSubmission
 			var schema versionSchema
 			if err := rows.Scan(&sub.ID, &sub.FormTitle, &sub.VersionNo, &sub.Answers,
-				&sub.Visible, &sub.SubmittedAt, &sub.Status, &schema); err != nil {
+				&sub.Visible, &sub.SubmittedAt, &sub.Status, &schema,
+				&sub.SensitiveBlob); err != nil {
 				return err
 			}
 			sub.Questions = schema.Fields
@@ -340,13 +349,32 @@ func (s *Store) SubjectSubmissions(ctx context.Context, tenantID, subjectID uuid
 // The old values are kept, not overwritten: a correction is a fact about the
 // record, and losing what it said before would remove the ability to explain why
 // something downstream was different.
+// checkRectifiable refuses a correction that would write where it must not.
+//
+// Returns domain.ErrForbidden rather than naming the offending field: the caller
+// is a public endpoint, and a message that distinguishes "that field is
+// sensitive" from "that field does not exist" describes the schema to anybody
+// who asks.
+func checkRectifiable(schema versionSchema, answers map[string]any) error {
+	for id := range answers {
+		q, known := schema.Fields[id]
+		if !known || q.Sensitive {
+			return domain.ErrForbidden
+		}
+	}
+	return nil
+}
+
 func (s *Store) RectifySubmission(ctx context.Context, tenantID, subjectID, submissionID uuid.UUID, answers map[string]any) error {
 	return s.db.InTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
 		var before map[string]any
+		var schema versionSchema
 		err := tx.QueryRow(ctx,
-			`SELECT answers FROM forms.submissions
-			 WHERE id = $1 AND data_subject_id = $2 AND status = 'active'
-			 FOR UPDATE`, submissionID, subjectID).Scan(&before)
+			`SELECT s.answers, v.schema
+			 FROM forms.submissions s
+			 JOIN forms.form_versions v ON v.id = s.form_version_id
+			 WHERE s.id = $1 AND s.data_subject_id = $2 AND s.status = 'active'
+			 FOR UPDATE OF s`, submissionID, subjectID).Scan(&before, &schema)
 		if postgres.IsNoRows(err) {
 			// Ownership is checked in the query itself. A separate lookup would
 			// invite the classic mistake of trusting an id from the request.
@@ -354,6 +382,24 @@ func (s *Store) RectifySubmission(ctx context.Context, tenantID, subjectID, subm
 		}
 		if err != nil {
 			return fmt.Errorf("loading submission for rectification: %w", err)
+		}
+
+		// The answers map is written to the plaintext column wholesale, so what
+		// it may contain has to be checked before it lands there.
+		//
+		// A sensitive answer does not live in that column: it is sealed in
+		// answers_enc under the subject's own key, and that key is what erasure
+		// destroys. Writing one here would put a readable copy beside the
+		// ciphertext, and crypto-shredding would go on reporting success while
+		// the value survived it in clear. The portal shows sensitive answers and
+		// deliberately does not offer to edit them; correcting one means
+		// re-sealing, which is a write path that does not exist yet.
+		//
+		// Unknown ids are refused for a plainer reason: they are not answers to
+		// anything. They reach the grid and the export as columns nobody asked
+		// for, and a caller inventing them is not a caller correcting a record.
+		if err := checkRectifiable(schema, answers); err != nil {
+			return err
 		}
 
 		if _, err := tx.Exec(ctx, `

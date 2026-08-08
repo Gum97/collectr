@@ -42,6 +42,7 @@ type Service struct {
 	log      *slog.Logger
 	baseURL  string
 	sla      time.Duration
+	opener   contracts.SensitiveOpener
 }
 
 // Deps are the Service's collaborators.
@@ -54,6 +55,10 @@ type Deps struct {
 	Log      *slog.Logger
 	BaseURL  string
 	SLA      time.Duration
+	// Opener decrypts a submission's sealed answers. Optional: without it the
+	// portal shows the plaintext answers only, and says so rather than implying
+	// those are all the data there is.
+	Opener contracts.SensitiveOpener
 }
 
 // NewService returns a Service.
@@ -61,6 +66,7 @@ func NewService(d Deps) *Service {
 	return &Service{
 		db: d.DB, store: d.Store, subjects: d.Subjects, audit: d.Audit,
 		notifier: d.Notifier, log: d.Log, baseURL: d.BaseURL, sla: d.SLA,
+		opener: d.Opener,
 	}
 }
 
@@ -166,7 +172,46 @@ func (s *Service) Exchange(ctx context.Context, tenantID uuid.UUID, raw string) 
 
 // MySubmissions returns what the session is entitled to see.
 func (s *Service) MySubmissions(ctx context.Context, sess Session) ([]store.SubjectSubmission, error) {
-	return s.store.SubjectSubmissions(ctx, sess.TenantID, sess.SubjectID, sess.SubmissionID)
+	subs, err := s.store.SubjectSubmissions(ctx, sess.TenantID, sess.SubjectID, sess.SubmissionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Sensitive answers are merged into what the subject sees.
+	//
+	// Article 4 of Law 91/2025 gives a data subject the right to view their
+	// personal data; the limits it sets are national defence and security, and
+	// harm to another person's life or health. Being sensitive is not one of
+	// them -- and sensitive is precisely the category defined by how much its
+	// exposure affects the person, so their interest in seeing it is stronger
+	// than for anything else on the page, not weaker. Withholding it here while
+	// the same link offers irreversible erasure would be incoherent.
+	//
+	// The key is the subject's own. This is the one party who can decrypt these
+	// bytes without anybody having to decide whether they should be allowed to.
+	for i := range subs {
+		if len(subs[i].SensitiveBlob) == 0 || s.opener == nil {
+			continue
+		}
+		sealed, err := s.opener.OpenSensitive(ctx, sess.TenantID, sess.SubjectID, subs[i].ID, subs[i].SensitiveBlob)
+		if err != nil {
+			// Logged and skipped rather than failing the whole page: a subject
+			// who cannot read one encrypted field must still be able to see the
+			// rest of their data and to exercise the other rights. The portal
+			// marks the field as unreadable rather than omitting it silently.
+			s.log.Error("opening sensitive answers for subject",
+				"error", err, "submission_id", subs[i].ID)
+			subs[i].SensitiveUnreadable = true
+			continue
+		}
+		if subs[i].Answers == nil {
+			subs[i].Answers = make(map[string]any, len(sealed))
+		}
+		for k, v := range sealed {
+			subs[i].Answers[k] = v
+		}
+	}
+	return subs, nil
 }
 
 // MyRequests returns the subject's request history.

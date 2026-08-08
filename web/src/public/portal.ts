@@ -34,6 +34,9 @@ interface Submission {
   questions?: Record<string, Question>
   submitted_at: string
   status: string
+  /** True when the record holds sealed answers that could not be opened. Not the
+   *  same as holding none, and the page must not blur the two. */
+  sensitive_unreadable?: boolean
 }
 
 interface RequestRow {
@@ -54,6 +57,12 @@ const REQUEST_TYPES: { type: string; label: string; blurb: string; danger?: bool
     type: 'export',
     label: 'Tải toàn bộ dữ liệu về',
     blurb: 'Chúng tôi gửi bạn một tệp máy đọc được, chậm nhất trong thời hạn ghi ở dưới.',
+  },
+  {
+    type: 'rectify',
+    label: 'Yêu cầu chỉnh sửa',
+    blurb:
+      'Dùng cho những ô bạn không sửa trực tiếp được ở trên, ví dụ dữ liệu nhạy cảm đang mã hoá.',
   },
   {
     type: 'restrict',
@@ -304,7 +313,47 @@ function recordCard(s: Submission): HTMLElement {
     // portal cannot replace, and a text box over it would invite a change that
     // silently does nothing.
     const isFile = q?.type === 'file' || (value !== null && typeof value === 'object')
-    input.value = isFile ? '(tệp đính kèm)' : String(value ?? '')
+    const shown = isFile ? '(tệp đính kèm)' : String(value ?? '')
+
+    if (q?.sensitive) {
+      // Shown, because the law gives the right to see it, and covered, because
+      // a portal left open on a desk should not put somebody's identity card on
+      // screen. One click, and the click is theirs.
+      //
+      // Read-only: correcting this value means re-sealing it under the
+      // subject's key, and no write path does that. Offering a text box would
+      // send the new value to the plaintext column, where erasure could no
+      // longer reach it -- the server refuses exactly that, and the page should
+      // not be asking.
+      input.value = '••••••••'
+      input.disabled = true
+      input.dataset.hidden = '1'
+
+      const reveal = document.createElement('button')
+      reveal.type = 'button'
+      reveal.className = 'btn btn-sm'
+      reveal.textContent = 'Hiện'
+      reveal.addEventListener('click', () => {
+        const hidden = input.dataset.hidden === '1'
+        input.value = hidden ? shown : '••••••••'
+        input.dataset.hidden = hidden ? '0' : '1'
+        reveal.textContent = hidden ? 'Ẩn' : 'Hiện'
+      })
+
+      row.append(label, input, reveal)
+      row.append(
+        text(
+          'p',
+          'meta',
+          'Ô này được mã hoá bằng khoá riêng của bạn. Muốn sửa, hãy dùng “Yêu cầu chỉnh sửa” ở dưới — ' +
+            'sửa trực tiếp ở đây sẽ đặt giá trị vào chỗ mà lệnh xoá không với tới được.',
+        ),
+      )
+      list.append(row)
+      continue
+    }
+
+    input.value = shown
     input.disabled = isFile
     if (!isFile) inputs.set(fieldId, input)
 
@@ -312,6 +361,17 @@ function recordCard(s: Submission): HTMLElement {
     list.append(row)
   }
   body.push(list)
+
+  if (s.sensitive_unreadable) {
+    body.push(
+      text(
+        'p',
+        'cf-error',
+        'Bản ghi này có dữ liệu nhạy cảm mà chúng tôi không mở được để hiển thị. ' +
+          'Đây không phải là “không có gì” — hãy dùng “Tải toàn bộ dữ liệu về” hoặc liên hệ đơn vị đã thu thập.',
+      ),
+    )
+  }
 
   const status = document.createElement('p')
   status.className = 'cf-status'
