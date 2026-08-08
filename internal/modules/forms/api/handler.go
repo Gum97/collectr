@@ -28,7 +28,14 @@ type Handler struct {
 	svc    *app.Service
 	events contracts.EventCollector
 	signer *signing.Signer
+	// reports is optional: the funnel endpoint says so rather than 500ing when
+	// the composition root has not attached one.
+	reports contracts.ReportSource
 }
+
+// SetReports attaches the analytics source. Called once at startup by the
+// composition root, which is the only place that knows both modules.
+func (h *Handler) SetReports(r contracts.ReportSource) { h.reports = r }
 
 // New returns a Handler.
 func New(svc *app.Service, events contracts.EventCollector, signer *signing.Signer) *Handler {
@@ -49,6 +56,8 @@ func (h *Handler) RegisterAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/forms/{id}/draft/validate", h.validateDraft)
 	mux.HandleFunc("POST /api/v1/forms/{id}/draft/publish", h.publish)
 	mux.HandleFunc("GET /api/v1/forms/{id}/versions", h.versions)
+	mux.HandleFunc("GET /api/v1/forms/{id}/versions/{a}/diff/{b}", h.versionDiff)
+	mux.HandleFunc("GET /api/v1/forms/{id}/analytics/funnel", h.funnel)
 	mux.HandleFunc("GET /api/v1/forms/{id}/submissions", h.submissions)
 }
 
@@ -438,4 +447,142 @@ func (h *Handler) authorize(w http.ResponseWriter, r *http.Request, capability s
 		return authn.Actor{}, uuid.Nil, false
 	}
 	return actor, formID, true
+}
+
+// funnel reports the conversion path for one form.
+func (h *Handler) funnel(w http.ResponseWriter, r *http.Request) {
+	actor, formID, ok := h.authorize(w, r, authn.CapAnalyticsRead)
+	if !ok {
+		return
+	}
+	if h.reports == nil {
+		httpx.Error(w, r, http.StatusServiceUnavailable, "unavailable",
+			"Báo cáo chưa sẵn sàng")
+		return
+	}
+
+	to := time.Now().UTC()
+	from := to.AddDate(0, 0, -30)
+	if raw := r.URL.Query().Get("from"); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			httpx.ErrorWithFields(w, r, http.StatusUnprocessableEntity, "validation_failed",
+				"Invalid request", map[string]any{"from": "phải theo định dạng RFC3339"})
+			return
+		}
+		from = t.UTC()
+	}
+	if raw := r.URL.Query().Get("to"); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			httpx.ErrorWithFields(w, r, http.StatusUnprocessableEntity, "validation_failed",
+				"Invalid request", map[string]any{"to": "phải theo định dạng RFC3339"})
+			return
+		}
+		to = t.UTC()
+	}
+	bucket := 24 * time.Hour
+	switch r.URL.Query().Get("group_by") {
+	case "hour":
+		bucket = time.Hour
+	case "week":
+		bucket = 7 * 24 * time.Hour
+	}
+
+	summary, err := h.reports.Funnel(r.Context(), actor.TenantID, formID, from, to, bucket)
+	if err != nil {
+		httpx.Logger(r.Context()).Error("reading funnel", "error", err, "form_id", formID)
+		httpx.Error(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
+		return
+	}
+	// A missing drop-off breakdown is not a failed report: it needs page events,
+	// which only exist once a respondent has moved between pages.
+	pages, err := h.reports.PageDropOff(r.Context(), actor.TenantID, formID, from, to)
+	if err != nil {
+		httpx.Logger(r.Context()).Warn("reading drop-off", "error", err, "form_id", formID)
+	}
+
+	points := make([]map[string]any, 0, len(summary.Points))
+	for _, p := range summary.Points {
+		points = append(points, map[string]any{
+			"bucket": p.Bucket, "clicks": p.Clicks, "views": p.Views,
+			"starts": p.Starts, "submits": p.Submits,
+		})
+	}
+	out := map[string]any{
+		"from": from, "to": to,
+		"clicks": summary.Clicks, "views": summary.Views,
+		"starts": summary.Starts, "submits": summary.Submits,
+		"points": points,
+	}
+	// Rates are omitted rather than sent as zero when their denominator is
+	// missing. A form opened directly, never through a short link, has no clicks
+	// -- and "0% completion" on a form with thousands of submissions is a number
+	// people act on.
+	if summary.Views > 0 {
+		out["completion_rate"] = summary.CompletionRate()
+		// A completion rate above 1 is not a very good form. It means views were
+		// not recorded for submissions that happened -- data predating the
+		// server-side view counter, or a page that never reported one -- so the
+		// denominator is short. Said out loud rather than printed as 542200%,
+		// because a number that large reads as a bug in the report and a number
+		// like 87% would read as the truth.
+		if summary.Submits > summary.Views {
+			out["denominator_incomplete"] = true
+			out["denominator_note"] = "Số lượt gửi lớn hơn số lượt xem, nên tỉ lệ " +
+				"hoàn thành không đọc được: một phần lượt gửi không có lượt xem " +
+				"tương ứng được ghi nhận."
+		}
+	}
+	if summary.Starts > 0 {
+		out["abandon_rate"] = summary.AbandonRate()
+	}
+	rows := make([]map[string]any, 0, len(pages))
+	for _, p := range pages {
+		row := map[string]any{"page_id": p.PageID, "entered": p.Entered, "left": p.Left}
+		if p.Entered > 0 {
+			row["rate"] = p.Rate()
+		}
+		rows = append(rows, row)
+	}
+	out["pages"] = rows
+	httpx.JSON(w, r, http.StatusOK, out)
+}
+
+// versionDiff compares two published versions.
+//
+// Both are immutable, so the answer never changes and the endpoint is safe to
+// cache. It exists so a publish decision can be made against what actually
+// changed rather than against a memory of what was edited.
+func (h *Handler) versionDiff(w http.ResponseWriter, r *http.Request) {
+	actor, formID, ok := h.authorize(w, r, authn.CapFormRead)
+	if !ok {
+		return
+	}
+	aID, err1 := uuid.Parse(r.PathValue("a"))
+	bID, err2 := uuid.Parse(r.PathValue("b"))
+	if err1 != nil || err2 != nil {
+		httpx.Error(w, r, http.StatusBadRequest, "invalid_id", "Version ids must be uuids")
+		return
+	}
+
+	a, b, err := h.svc.VersionPair(r.Context(), actor.TenantID, formID, aID, bID)
+	switch {
+	case errors.Is(err, domain.ErrFormNotFound):
+		httpx.Error(w, r, http.StatusNotFound, "not_found", "Version not found")
+		return
+	case err != nil:
+		httpx.Logger(r.Context()).Error("reading versions", "error", err)
+		httpx.Error(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
+		return
+	}
+
+	result := domain.Diff(a.Schema, b.Schema)
+	httpx.JSON(w, r, http.StatusOK, map[string]any{
+		"from":     map[string]any{"id": a.ID, "version_no": a.VersionNo},
+		"to":       map[string]any{"id": b.ID, "version_no": b.VersionNo},
+		"changes":  result.Changes,
+		"breaking": result.Breaking,
+		"blocked":  result.Blocked,
+	})
 }

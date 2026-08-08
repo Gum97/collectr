@@ -119,12 +119,12 @@ Retry với cùng `Idempotency-Key`:
 - cùng payload → phát lại nguyên văn response `201` gốc
 - **khác payload** → `422 idempotency_key_reused` (chặn replay đổi nội dung)
 
-## 3.6 `POST /api/pub/uploads` — upload file
+## 3.6 `POST /api/pub/forms/{public_id}/uploads` — upload file
 
 App nhận byte trực tiếp (local-first, xem [6.4](06-deep-dives.md#64-file-upload--local-first-s3-sau)).
 
 ```http
-POST /api/pub/uploads
+POST /api/pub/forms/{public_id}/uploads
 Content-Type: multipart/form-data
 X-Form-Version-Id: fv_01JB7X…
 X-Field-Id: fld_cv

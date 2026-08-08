@@ -373,3 +373,22 @@ func (s *Service) Detail(ctx context.Context, tenantID, formID uuid.UUID) (FormD
 	}
 	return out, nil
 }
+
+// VersionPair reads two published versions of the same form, for comparison.
+func (s *Service) VersionPair(ctx context.Context, tenantID, formID, aID, bID uuid.UUID) (store.Version, store.Version, error) {
+	a, err := s.repo.GetVersion(ctx, tenantID, aID)
+	if err != nil {
+		return store.Version{}, store.Version{}, err
+	}
+	b, err := s.repo.GetVersion(ctx, tenantID, bID)
+	if err != nil {
+		return store.Version{}, store.Version{}, err
+	}
+	// Both must belong to the form in the path. Without this, two version ids
+	// from anywhere would compare happily and leak one form's schema through
+	// another form's URL.
+	if a.FormID != formID || b.FormID != formID {
+		return store.Version{}, store.Version{}, domain.ErrFormNotFound
+	}
+	return a, b, nil
+}
