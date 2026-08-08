@@ -1,0 +1,85 @@
+{
+	admin off
+}
+
+# Shared by every site block, so a second hostname cannot accidentally be served
+# with weaker headers than the first.
+(hardened) {
+	encode zstd gzip
+	request_body {
+		max_size 10MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+	log {
+		output stdout
+		format json
+	}
+}
+
+# Two hostnames, one deployment: put both in SITE_ADDRESS, comma separated --
+#   SITE_ADDRESS=form.example.com, rutgon.example.com
+# Caddy obtains a certificate for each. The application already knows which is
+# which: form pages are built from BASE_URL, short links from the domain each
+# link was created on.
+#
+# To confine the shortener host to redirects -- so the admin API and form pages
+# are not reachable there at all -- give it its own block instead:
+#
+#   rutgon.example.com {
+#   	import hardened
+#   	@short path /r/* /q/*
+#   	handle @short {
+#   		reverse_proxy collectr:8080 {
+#   			header_up X-Forwarded-Host {host}
+#   		}
+#   	}
+#   	handle {
+#   		respond 404
+#   	}
+#   }
+#
+# That is the stronger setup: a hostname printed on posters and handed to
+# strangers then answers redirects and nothing else.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# Second line of defence on body size; the application enforces its own
+	# per-endpoint limits. Two layers, because either one can be misconfigured.
+	request_body {
+		max_size 10MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		# Referrer headers leak where a visitor came from, which for a form link
+		# can itself be personal data.
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	# Public form pages must not load anything from a third party: an external
+	# font or script would send visitor data outside the operator's own
+	# infrastructure, which is exactly what self-hosting is meant to prevent.
+	# /dsr with no trailing slash is the exact URL sent in the magic-link email,
+	# and /consent/* is the permalink a consent record points at. Both were
+	# outside this matcher and so served without the policy below.
+	@public path /f/* /r/* /q/* /dsr /dsr/* /consent/* /p/*
+	header @public Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+
+	reverse_proxy collectr:8080 {
+		header_up X-Forwarded-Host {host}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
