@@ -23,7 +23,17 @@ func TestCheckRectifiable(t *testing.T) {
 		"f_name":  {Label: "Tên", Type: "text"},
 		"f_phone": {Label: "Điện thoại", Type: "text"},
 		"f_id":    {Label: "Số CCCD", Type: "text", Sensitive: true},
+		"f_doc":   {Label: "Giấy tờ", Type: "file"},
 	}}
+
+	// What is already on file. The portal returns the whole record on every
+	// correction, so the attachment is present in answers even when nobody
+	// touched it -- the check has to tell that apart from a caller trying to
+	// overwrite the reference with something they typed.
+	before := map[string]any{
+		"f_name": "Anh",
+		"f_doc":  map[string]any{"file_id": "11111111-1111-1111-1111-111111111111"},
+	}
 
 	tests := []struct {
 		name    string
@@ -38,12 +48,21 @@ func TestCheckRectifiable(t *testing.T) {
 			map[string]any{"f_name": "Anh", "f_id": "001234567890"}, true},
 		{"a field that is not in the schema", map[string]any{"f_invented": "x"}, true},
 		{"an empty field id", map[string]any{"": "x"}, true},
+
+		{"the attachment resent unchanged, as the portal always does",
+			map[string]any{"f_name": "Anh Hai",
+				"f_doc": map[string]any{"file_id": "11111111-1111-1111-1111-111111111111"}}, false},
+		{"a string typed over the attachment",
+			map[string]any{"f_doc": "giấy tờ của tôi"}, true},
+		{"the attachment repointed at another file",
+			map[string]any{"f_doc": map[string]any{"file_id": "22222222-2222-2222-2222-222222222222"}}, true},
+		{"the attachment cleared", map[string]any{"f_doc": nil}, true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := checkRectifiable(schema, tc.answers)
+			err := checkRectifiable(schema, before, tc.answers)
 			if tc.wantErr && err == nil {
 				t.Fatal("expected the correction to be refused, it was accepted")
 			}

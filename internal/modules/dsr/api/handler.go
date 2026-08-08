@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/collectr/collectr/internal/contracts"
 	"github.com/collectr/collectr/internal/modules/dsr/app"
 	"github.com/collectr/collectr/internal/modules/dsr/domain"
 	"github.com/collectr/collectr/internal/platform/httpx"
@@ -209,6 +210,13 @@ func (h *Handler) rectify(w http.ResponseWriter, r *http.Request) {
 
 	err = h.svc.Rectify(r.Context(), sess, id, body.Answers)
 	switch {
+	case errors.Is(err, contracts.ErrIdentifierTaken):
+		// Said plainly rather than as an internal error. The subject typed an
+		// address the organisation already knows as somebody else, and joining
+		// the two records is not something a correction form decides.
+		httpx.Error(w, r, http.StatusConflict, "identifier_taken",
+			"Giá trị này đã được dùng cho một hồ sơ khác. Vui lòng liên hệ tổ chức đã thu thập dữ liệu.")
+		return
 	case errors.Is(err, domain.ErrForbidden):
 		// 404, not 403: confirming the record exists but belongs to someone else
 		// is itself a disclosure.

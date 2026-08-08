@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -125,10 +127,11 @@ func (h *AdminHandler) rectifyOnBehalf(w http.ResponseWriter, r *http.Request) {
 	// redirecting where a person's mail goes -- the notice has to reach the
 	// address the real owner still controls. Sending only to the new one would
 	// mean the takeover announces itself exclusively to whoever performed it.
-	oldContact, cerr := h.store.ContactFor(r.Context(), actor.TenantID, submissionID)
+	identity, cerr := h.store.IdentityOf(r.Context(), actor.TenantID, submissionID)
 	if cerr != nil {
-		httpx.Logger(r.Context()).Error("reading contact before rectify", "error", cerr)
+		httpx.Logger(r.Context()).Error("reading identity before rectify", "error", cerr)
 	}
+	oldContact := identity.Value
 
 	var created domain.Request
 	err = h.db.InTenantTx(r.Context(), actor.TenantID, func(tx pgx.Tx) error {
@@ -142,6 +145,16 @@ func (h *AdminHandler) rectifyOnBehalf(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := h.store.RectifyTx(r.Context(), tx, actor.TenantID, subjectID, submissionID,
 			req.Answers, store.OperatorRectifier(actor.UserID)); err != nil {
+			return err
+		}
+		// A corrected identifier is stored twice: as the answer, in the clear,
+		// and as the HMAC the portal looks people up by. Updating only the answer
+		// leaves the two disagreeing -- the owner of the corrected address cannot
+		// reach their own data, and the mistyped one, which may belong to
+		// somebody else entirely, still can. Fixing a typed email is the whole
+		// reason this endpoint exists, so it moves both or neither.
+		if err := h.rekeyIfIdentifierChanged(r.Context(), tx, actor.TenantID,
+			subjectID, identity, req.Answers); err != nil {
 			return err
 		}
 		reqID, perr := uuid.Parse(created.ID)
@@ -175,6 +188,14 @@ func (h *AdminHandler) rectifyOnBehalf(w http.ResponseWriter, r *http.Request) {
 		})
 	})
 	switch {
+	case errors.Is(err, contracts.ErrIdentifierTaken):
+		// 409 rather than a silent success: joining two subjects merges two
+		// consent histories and two keys, and that is not a decision to make on
+		// behalf of somebody fixing a typo.
+		httpx.Error(w, r, http.StatusConflict, "identifier_taken",
+			"Giá trị này đã thuộc về một chủ thể dữ liệu khác trong tổ chức. "+
+				"Không thể gộp hai hồ sơ ở đây — hãy xử lý như một yêu cầu riêng.")
+		return
 	case errors.Is(err, domain.ErrForbidden):
 		// 404: confirming the record exists but belongs to someone else is
 		// itself a disclosure.
@@ -262,4 +283,38 @@ func (h *AdminHandler) notifyCorrection(r *http.Request, tenantID, submissionID 
 		sent = append(sent, to)
 	}
 	return sent
+}
+
+// rekeyIfIdentifierChanged moves the subject's lookup key when the correction
+// changed the answer they are recognised by.
+//
+// Does nothing when the form has no identifier question, when the correction did
+// not touch it, or when the value is unchanged. The no-op cases are the common
+// ones and none of them is an error.
+func (h *AdminHandler) rekeyIfIdentifierChanged(ctx context.Context, tx pgx.Tx,
+	tenantID, subjectID uuid.UUID, identity store.Identity, answers map[string]any,
+) error {
+	if h.subjects == nil || identity.FieldID == "" {
+		return nil
+	}
+	raw, corrected := answers[identity.FieldID]
+	if !corrected {
+		return nil
+	}
+	next, ok := raw.(string)
+	if !ok {
+		return nil
+	}
+	next = strings.TrimSpace(next)
+	if next == "" || next == identity.Value {
+		return nil
+	}
+	// The kind is what the schema declared, not what the new value looks like.
+	// A phone-identified form whose answer now contains an "@" is a bad
+	// correction, not a change of channel, and guessing would quietly re-key the
+	// subject into a kind nothing else expects.
+	if !slices.Contains([]string{"email", "phone"}, identity.Kind) {
+		return nil
+	}
+	return h.subjects.RekeyIdentifier(ctx, tx, tenantID, subjectID, identity.Kind, next)
 }

@@ -43,7 +43,15 @@ type AdminHandler struct {
 	log      *slog.Logger
 	// baseURL is the origin the portal link in that notice points at.
 	baseURL string
+	// subjects re-keys a subject when a correction changes the very answer they
+	// are recognised by. Optional so a deployment without it still corrects
+	// records; the handler says plainly when the lookup was left behind.
+	subjects contracts.SubjectResolver
 }
+
+// SetSubjects supplies the subject directory used to re-key a corrected
+// identifier.
+func (h *AdminHandler) SetSubjects(r contracts.SubjectResolver) { h.subjects = r }
 
 // SetNotifier supplies the channel used to tell subjects about corrections made
 // on their behalf.

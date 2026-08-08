@@ -2,8 +2,10 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"strings"
@@ -298,6 +300,16 @@ type SubjectQuestion struct {
 	// the only address the system can reach them at: consent.data_subjects holds
 	// an HMAC of it and nothing reversible, by design.
 	Identifier bool `json:"identifier"`
+	// PII names the kind of personal data, and for the identifier question it is
+	// also the lookup kind the subject is keyed by: email or phone.
+	PII string `json:"pii"`
+}
+
+// Identity is the question that recognises a subject, and its current answer.
+type Identity struct {
+	FieldID string
+	Kind    string
+	Value   string
 }
 
 // versionSchema is the slice of a form schema the portal needs.
@@ -361,7 +373,7 @@ func (s *Store) SubjectSubmissions(ctx context.Context, tenantID, subjectID uuid
 // is a public endpoint, and a message that distinguishes "that field is
 // sensitive" from "that field does not exist" describes the schema to anybody
 // who asks.
-func checkRectifiable(schema versionSchema, answers map[string]any) error {
+func checkRectifiable(schema versionSchema, before, answers map[string]any) error {
 	for id := range answers {
 		q, known := schema.Fields[id]
 		if !known || q.Sensitive {
@@ -376,7 +388,12 @@ func checkRectifiable(schema versionSchema, answers map[string]any) error {
 		//
 		// Correcting the wrong document means uploading the right one, which is a
 		// different operation than the one this function guards.
-		if q.Type == fieldTypeFile {
+		//
+		// Mentioning it is fine; changing it is not. The portal returns the whole
+		// record on every correction, attachment included, so refusing the
+		// mention would refuse every correction a subject makes on a form that
+		// has one -- which is how this was found.
+		if q.Type == fieldTypeFile && !sameAnswer(before[id], answers[id]) {
 			return domain.ErrForbidden
 		}
 	}
@@ -466,7 +483,7 @@ func (s *Store) RectifyTx(ctx context.Context, tx pgx.Tx, tenantID, subjectID, s
 	//
 	// Unknown ids are refused for a plainer reason: they are not answers to
 	// anything, and a caller inventing them is not a caller correcting a record.
-	if err := checkRectifiable(schema, answers); err != nil {
+	if err := checkRectifiable(schema, before, answers); err != nil {
 		return err
 	}
 
@@ -622,6 +639,15 @@ func (s *Store) Restrict(ctx context.Context, tx pgx.Tx, subjectID uuid.UUID) (i
 // failing a correction because a notice could not be addressed would leave the
 // wrong value on file, which is worse than a notice nobody receives.
 func (s *Store) ContactFor(ctx context.Context, tenantID, submissionID uuid.UUID) (string, error) {
+	id, err := s.IdentityOf(ctx, tenantID, submissionID)
+	return id.Value, err
+}
+
+// IdentityOf returns the identifier question, its kind and its current answer.
+//
+// Empty when the form has no identifier question. Callers treat that as "cannot
+// notify and nothing to re-key", never as an error.
+func (s *Store) IdentityOf(ctx context.Context, tenantID, submissionID uuid.UUID) (Identity, error) {
 	const q = `
 		SELECT s.answers, v.schema
 		FROM forms.submissions s
@@ -634,19 +660,42 @@ func (s *Store) ContactFor(ctx context.Context, tenantID, submissionID uuid.UUID
 		return tx.QueryRow(ctx, q, submissionID).Scan(&answers, &schema)
 	})
 	if postgres.IsNoRows(err) {
-		return "", nil
+		return Identity{}, nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("reading contact for submission: %w", err)
+		return Identity{}, fmt.Errorf("reading identity for submission: %w", err)
 	}
 
 	for id, q := range schema.Fields {
 		if !q.Identifier {
 			continue
 		}
+		out := Identity{FieldID: id, Kind: q.PII}
 		if v, ok := answers[id].(string); ok {
-			return strings.TrimSpace(v), nil
+			out.Value = strings.TrimSpace(v)
 		}
+		return out, nil
 	}
-	return "", nil
+	return Identity{}, nil
+}
+
+// sameAnswer reports whether two stored answers are the same value.
+//
+// Compared as their JSON encodings rather than field by field: an attachment
+// answer is a small object, the shape has changed once already, and a
+// comparison that knows the shape would silently start returning "different"
+// for equal values the day it changes again.
+func sameAnswer(a, b any) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	ja, err := json.Marshal(a)
+	if err != nil {
+		return false
+	}
+	jb, err := json.Marshal(b)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(ja, jb)
 }

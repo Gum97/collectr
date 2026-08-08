@@ -260,6 +260,7 @@ func run() error {
 	// noticing later. Without this the endpoint's own reply promised a notice
 	// nobody sent.
 	dsrAdminHandler.SetNotifier(notifier, log, cfg.BaseURL)
+	dsrAdminHandler.SetSubjects(consentStore)
 
 	exportSvc := exportsapp.NewService(exportsapp.Deps{
 		Store: exportsstore.New(db), Submissions: formStore,

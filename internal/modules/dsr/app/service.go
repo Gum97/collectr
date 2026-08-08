@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,6 +32,9 @@ const (
 // creating one.
 type SubjectLookup interface {
 	FindSubject(ctx context.Context, tenantID uuid.UUID, kind, value string) (contracts.Subject, error)
+	// RekeyIdentifier moves the subject's lookup key when they correct the very
+	// answer they are recognised by. See contracts.SubjectResolver.
+	RekeyIdentifier(ctx context.Context, tx pgx.Tx, tenantID, subjectID uuid.UUID, kind, value string) error
 }
 
 // Service drives the portal.
@@ -224,12 +229,30 @@ func (s *Service) Rectify(ctx context.Context, sess Session, submissionID uuid.U
 	if !sess.CanSee(submissionID) {
 		return domain.ErrForbidden
 	}
-	if err := s.store.RectifySubmission(ctx, sess.TenantID, sess.SubjectID, submissionID, answers,
-		store.SubjectRectifier(sess.SubjectID)); err != nil {
+	// Read before the write so a corrected identifier can be recognised as one.
+	identity, err := s.store.IdentityOf(ctx, sess.TenantID, submissionID)
+	if err != nil {
 		return err
 	}
 
+	// One transaction for the correction, the re-key and the audit entry.
+	//
+	// They used to be two: the answers were written in their own transaction and
+	// the audit entry followed in another. A correction could therefore succeed
+	// and leave no trace of itself, which is the one thing an audit trail exists
+	// to make impossible.
 	return s.db.InTenantTx(ctx, sess.TenantID, func(tx pgx.Tx) error {
+		if err := s.store.RectifyTx(ctx, tx, sess.TenantID, sess.SubjectID, submissionID,
+			answers, store.SubjectRectifier(sess.SubjectID)); err != nil {
+			return err
+		}
+		// The same two-places problem the operator path has: the identifier is
+		// an answer in the clear and an HMAC used to find people, and correcting
+		// one without the other leaves the subject unable to sign in with the
+		// address their own record now shows.
+		if err := s.rekeyIfIdentifierChanged(ctx, tx, sess, identity, answers); err != nil {
+			return err
+		}
 		return s.audit.Write(ctx, tx, contracts.AuditEntry{
 			TenantID: sess.TenantID,
 			Actor:    contracts.AuditActor{Type: "subject", ID: sess.SubjectID.String()},
@@ -240,6 +263,34 @@ func (s *Service) Rectify(ctx context.Context, sess Session, submissionID uuid.U
 			Payload: map[string]any{"source": "dsr_self_service"},
 		})
 	})
+}
+
+// rekeyIfIdentifierChanged moves the subject's lookup key when the correction
+// changed the answer they are recognised by.
+//
+// Silent no-op when the form has no identifier question, when the correction did
+// not touch it, or when the value is unchanged -- all of them ordinary.
+func (s *Service) rekeyIfIdentifierChanged(ctx context.Context, tx pgx.Tx, sess Session,
+	identity store.Identity, answers map[string]any,
+) error {
+	if s.subjects == nil || identity.FieldID == "" {
+		return nil
+	}
+	next, ok := answers[identity.FieldID].(string)
+	if !ok {
+		return nil
+	}
+	next = strings.TrimSpace(next)
+	if next == "" || next == identity.Value {
+		return nil
+	}
+	// The kind comes from the schema, not from what the new value looks like: a
+	// phone-identified form whose answer now contains an "@" is a bad
+	// correction, not a change of channel.
+	if !slices.Contains([]string{"email", "phone"}, identity.Kind) {
+		return nil
+	}
+	return s.subjects.RekeyIdentifier(ctx, tx, sess.TenantID, sess.SubjectID, identity.Kind, next)
 }
 
 // Raise records an exercise of a right.

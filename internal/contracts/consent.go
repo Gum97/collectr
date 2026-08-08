@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -86,7 +87,28 @@ type SubjectResolver interface {
 	// DataKey returns the subject's decrypted data key, creating one if needed.
 	// It returns ErrSubjectErased once the key has been destroyed.
 	DataKey(ctx context.Context, tx pgx.Tx, subjectID uuid.UUID) ([]byte, error)
+	// RekeyIdentifier moves a subject's lookup key to a corrected value.
+	//
+	// Needed because the identifier is stored as an HMAC and the answer holding
+	// it is stored in the clear: correcting the answer alone leaves the two
+	// disagreeing. The consequences are not cosmetic. The person who owns the
+	// corrected address cannot reach their own data through the portal, and the
+	// mistyped address -- which may well belong to somebody else -- still can.
+	//
+	// It changes only how the subject is found. The subject id, the data key and
+	// the consent history are untouched, so nothing already recorded moves.
+	//
+	// Returns ErrIdentifierTaken when the new value already belongs to a
+	// different subject. Joining two subjects means merging two consent
+	// histories and two keys, which is a different operation with different
+	// consequences, and doing it silently as part of fixing a typo would be the
+	// wrong way to decide it.
+	RekeyIdentifier(ctx context.Context, tx pgx.Tx, tenantID, subjectID uuid.UUID, kind, value string) error
 }
+
+// ErrIdentifierTaken reports that an identifier already belongs to another
+// subject.
+var ErrIdentifierTaken = errors.New("identifier already belongs to another subject")
 
 // DocumentRef identifies a published consent document and carries the hash the
 // client's rendering must match.

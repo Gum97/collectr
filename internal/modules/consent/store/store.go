@@ -508,3 +508,51 @@ func (s *Store) WithdrawalCount(ctx context.Context, tenantID uuid.UUID, since t
 	}
 	return total, byPurpose, nil
 }
+
+// RekeyIdentifier moves a subject's lookup key to a corrected value.
+//
+// The identifier lives in two places that must agree: the answer, stored in the
+// clear because a contact channel has to be usable, and this HMAC, which is what
+// the portal looks people up by. Correcting only the answer leaves the record
+// saying one thing and the lookup saying another -- and the mistyped address
+// keeps working while the real one does not.
+//
+// The unique constraint is checked with a SELECT before the UPDATE rather than
+// relying on the write to fail. Both are correct; the read gives the caller a
+// reason instead of a constraint name, and this is a path where the reason
+// decides what the operator does next.
+func (s *Store) RekeyIdentifier(ctx context.Context, tx pgx.Tx, tenantID, subjectID uuid.UUID, kind, value string) error {
+	hash := s.identifierHash(kind, value)
+
+	var owner uuid.UUID
+	err := tx.QueryRow(ctx, `
+		SELECT id FROM consent.data_subjects
+		WHERE tenant_id = $1 AND identifier_kind = $2 AND identifier_hash = $3`,
+		tenantID, kind, hash).Scan(&owner)
+	switch {
+	case err == nil && owner == subjectID:
+		// Already keyed to this value. A correction that changed some other
+		// answer, or the same one twice.
+		return nil
+	case err == nil:
+		return contracts.ErrIdentifierTaken
+	case !postgres.IsNoRows(err):
+		return fmt.Errorf("checking identifier ownership: %w", err)
+	}
+
+	// erased_at is respected: a subject whose key has been destroyed has no data
+	// left to correct, and re-pointing their identifier would resurrect a
+	// lookup to nothing.
+	tag, err := tx.Exec(ctx, `
+		UPDATE consent.data_subjects
+		   SET identifier_hash = $3, identifier_kind = $2
+		 WHERE id = $1 AND tenant_id = $4 AND erased_at IS NULL`,
+		subjectID, kind, hash, tenantID)
+	if err != nil {
+		return fmt.Errorf("rekeying identifier: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrSubjectErased
+	}
+	return nil
+}
