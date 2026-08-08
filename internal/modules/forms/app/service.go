@@ -355,8 +355,13 @@ func (s *Service) Submissions(ctx context.Context, tenantID, formID uuid.UUID, b
 		}
 		grid.Rows = append(grid.Rows, row)
 	}
-	if n := len(subs); n > 0 {
-		grid.Cursor = subs[n-1].SubmittedAt.Format(time.RFC3339Nano)
+	// Only when the page came back full. Returning a cursor for a short page
+	// tells the client there is more, so "Trang sau" stayed enabled on the last
+	// page and one click produced an empty grid under a header still reading
+	// "25 bản ghi đang hoạt động" -- the screen contradicting itself, with the
+	// false half the more prominent one.
+	if len(subs) == limit {
+		grid.Cursor = subs[len(subs)-1].SubmittedAt.Format(time.RFC3339Nano)
 	}
 	return grid, nil
 }

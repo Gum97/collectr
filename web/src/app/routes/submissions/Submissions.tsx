@@ -242,12 +242,36 @@ function Grid({
       {page.isError && <ErrorBanner error={page.error} retry={() => void page.refetch()} />}
 
       {page.data && clipped.rows.length === 0 && (
+        // Three different emptinesses, and saying the wrong one is a statement
+        // about the data rather than about the view. A page past the end used to
+        // announce "biểu mẫu chưa nhận bản ghi nào" directly under a header
+        // reading "25 bản ghi đang hoạt động".
         <Empty
-          title={from || to ? 'Không có bản ghi nào trong khoảng ngày này' : 'Biểu mẫu chưa nhận bản ghi nào'}
+          title={
+            trail.length > 0
+              ? 'Hết bản ghi ở trang này'
+              : from || to
+                ? 'Không có bản ghi nào trong khoảng ngày này'
+                : 'Biểu mẫu chưa nhận bản ghi nào'
+          }
           hint={
-            from || to
-              ? 'Bộ lọc ngày đang thu hẹp kết quả. Nới khoảng ngày hoặc bỏ lọc để xem toàn bộ.'
-              : 'Biểu mẫu đã publish nhưng chưa ai gửi, hoặc link phát hành chưa được chạy.'
+            trail.length > 0 ? (
+              <>
+                Bạn đã đi quá trang cuối.{' '}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => setTrail((t) => t.slice(0, -1))}
+                >
+                  Quay lại trang trước
+                </button>
+                .
+              </>
+            ) : from || to ? (
+              'Bộ lọc ngày đang thu hẹp kết quả. Nới khoảng ngày hoặc bỏ lọc để xem toàn bộ.'
+            ) : (
+              'Biểu mẫu đã publish nhưng chưa ai gửi, hoặc link phát hành chưa được chạy.'
+            )
           }
         />
       )}

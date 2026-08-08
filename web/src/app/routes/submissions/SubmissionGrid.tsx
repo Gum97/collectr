@@ -133,8 +133,12 @@ function Legend({ columns, rows }: { columns: GridColumn[]; rows: ApiRow[] }) {
           </div>
         ))}
         {statuses.map((s) => (
-          <div key={s.code} className="flex gap-2">
-            <dt className="w-16 shrink-0">
+          // No fixed width on this one. w-16 fits the mono samples above and is
+          // narrower than the pill, so "Bình thường" overlapped the sentence
+          // explaining it -- the legend rendered unreadable at exactly the place
+          // it exists to be read.
+          <div key={s.code} className="flex items-start gap-2">
+            <dt className="shrink-0">
               <StatusPill tone={s.tone}>{s.label}</StatusPill>
             </dt>
             <dd className="min-w-0">{s.meaning}</dd>
@@ -146,7 +150,8 @@ function Legend({ columns, rows }: { columns: GridColumn[]; rows: ApiRow[] }) {
         <p className="mt-2 flex flex-wrap items-center gap-1 border-t border-line pt-2">
           <SensitiveTag>field nhạy cảm</SensitiveTag>
           <span>
-            {sensitive.map((c) => c.fieldId).join(', ')} — che mặc định. Mở lớp che là một lần truy cập
+            {/* The question, not its id. Third place this leaked. */}
+            {sensitive.map((c) => c.label).join(', ')} — che mặc định. Mở lớp che là một lần truy cập
             dữ liệu nhạy cảm và được ghi vào nhật ký audit.
           </span>
         </p>
