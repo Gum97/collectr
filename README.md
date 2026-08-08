@@ -165,7 +165,7 @@ curl -X POST http://localhost/api/v1/members/invitations -b cookies.txt \
 | `SETUP_TOKEN` | tự sinh | Mã cho endpoint tạo chủ sở hữu đầu tiên. Bỏ trống thì máy chủ tự sinh và in ra log |
 | `PUBLIC_WRITE_IP_LIMIT` | `60` | Lượt gửi/tải tệp mỗi phút cho mỗi dải /24. Nâng lên khi khách đi chung một NAT (hội chợ, văn phòng) |
 | `PUBLIC_WRITE_FORM_LIMIT` | `600` | Lượt gửi mỗi phút cho mỗi biểu mẫu |
-| `STORAGE_DRIVER` | `local` | `local` hoặc `s3` |
+| `STORAGE_DRIVER` | `local` | `local` (đĩa) hoặc `s3`. **Mặc định là đĩa** — MinIO không chạy trừ khi bạn bật profile `s3` |
 | `STORAGE_S3_ENDPOINT` | — | `minio:9000`, `<acc>.r2.cloudflarestorage.com`, `s3.cloud.fpt.vn`, `s3.amazonaws.com` |
 | `STORAGE_S3_BUCKET` · `_ACCESS_KEY` · `_SECRET_KEY` | — | Bắt buộc khi `STORAGE_DRIVER=s3` |
 
@@ -179,7 +179,7 @@ STORAGE_DRIVER=s3 STORAGE_S3_ENDPOINT=http://minio:9000 \
 STORAGE_S3_BUCKET=collectr STORAGE_S3_ACCESS_KEY=... STORAGE_S3_SECRET_KEY=... \
   docker compose up -d collectr worker
 ```
-| `STORAGE_DRIVER` | `local` | `local` hoặc `s3` |
+| `STORAGE_DRIVER` | `local` | `local` (đĩa) hoặc `s3`. **Mặc định là đĩa** — MinIO không chạy trừ khi bạn bật profile `s3` |
 | `STORAGE_LOCAL_PATH` | `/data/files` | Thư mục lưu tệp khi dùng `local` |
 | `STORAGE_S3_*` | — | Endpoint, bucket, khóa truy cập khi dùng `s3` |
 | `DSR_SLA_HOURS` | `72` | Hạn xử lý yêu cầu của chủ thể dữ liệu |

@@ -90,7 +90,12 @@ services:
       # Only read when STORAGE_DRIVER=s3. Works against MinIO (the s3 profile
       # below), Cloudflare R2, FPT Cloud Object Storage and AWS -- one endpoint
       # setting is the whole difference between them.
-      STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-http://minio:9000}
+      #
+      # No default, deliberately. Defaulting to the local MinIO would mean an
+      # operator who picked s3 for R2 and forgot the endpoint gets "lookup minio:
+      # no such host" -- a message about a container they never asked for. Empty
+      # produces the one that names the variable they actually missed.
+      STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-}
       STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-collectr}
       STORAGE_S3_REGION: ${STORAGE_S3_REGION:-us-east-1}
       STORAGE_S3_ACCESS_KEY: ${STORAGE_S3_ACCESS_KEY:-}
@@ -136,7 +141,12 @@ services:
       # Only read when STORAGE_DRIVER=s3. Works against MinIO (the s3 profile
       # below), Cloudflare R2, FPT Cloud Object Storage and AWS -- one endpoint
       # setting is the whole difference between them.
-      STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-http://minio:9000}
+      #
+      # No default, deliberately. Defaulting to the local MinIO would mean an
+      # operator who picked s3 for R2 and forgot the endpoint gets "lookup minio:
+      # no such host" -- a message about a container they never asked for. Empty
+      # produces the one that names the variable they actually missed.
+      STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-}
       STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-collectr}
       STORAGE_S3_REGION: ${STORAGE_S3_REGION:-us-east-1}
       STORAGE_S3_ACCESS_KEY: ${STORAGE_S3_ACCESS_KEY:-}
