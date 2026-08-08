@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	qrcode "github.com/skip2/go-qrcode"
 
 	"github.com/collectr/collectr/internal/contracts"
@@ -18,6 +19,7 @@ import (
 	"github.com/collectr/collectr/internal/modules/links/domain"
 	"github.com/collectr/collectr/internal/platform/authn"
 	"github.com/collectr/collectr/internal/platform/httpx"
+	"github.com/collectr/collectr/internal/platform/postgres"
 	"github.com/collectr/collectr/internal/platform/signing"
 )
 
@@ -36,6 +38,8 @@ type Handler struct {
 	pages DeadLinkPages
 
 	reports      contracts.LinkReporter
+	db           *postgres.DB
+	audit        contracts.AuditWriter
 	rawRetention time.Duration
 }
 
@@ -79,6 +83,7 @@ func (h *Handler) RegisterAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/links", h.create)
 	mux.HandleFunc("GET /api/v1/links", h.list)
 	mux.HandleFunc("GET /api/v1/links/{id}", h.get)
+	mux.HandleFunc("PATCH /api/v1/links/{id}", h.patch)
 	mux.HandleFunc("DELETE /api/v1/links/{id}", h.delete)
 }
 
@@ -576,4 +581,107 @@ func (h *Handler) allowed(
 		return false
 	}
 	return true
+}
+
+// patch changes a link's status.
+//
+// Legal hold is the reason this exists. It freezes a link and, with it, the
+// records reached through it: the retention sweeper must not delete what a
+// court has asked to be preserved. That makes it the one setting here that
+// deliberately overrides the erasure schedule, so it is recorded with who set
+// it and why rather than as a status flip.
+func (h *Handler) patch(w http.ResponseWriter, r *http.Request) {
+	actor, ok := authn.ActorFrom(r.Context())
+	if !ok {
+		httpx.Error(w, r, http.StatusUnauthorized, "unauthenticated", "Authentication required")
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		httpx.Error(w, r, http.StatusNotFound, "not_found", "Link not found")
+		return
+	}
+
+	var body struct {
+		Status string `json:"status"`
+		Reason string `json:"reason"`
+	}
+	if err := httpx.DecodeJSON(w, r, &body, 8<<10); err != nil {
+		httpx.Error(w, r, http.StatusBadRequest, "invalid_body", "Request body is not valid JSON")
+		return
+	}
+
+	link, err := h.svc.Get(r.Context(), actor.TenantID, id)
+	if errors.Is(err, domain.ErrNotFound) {
+		httpx.Error(w, r, http.StatusNotFound, "not_found", "Link not found")
+		return
+	}
+	if err != nil {
+		httpx.Logger(r.Context()).Error("loading link", "error", err)
+		httpx.Error(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
+		return
+	}
+	if !h.allowed(w, r, actor, authn.CapLinkWrite, link.ProjectID) {
+		return
+	}
+
+	// A hold suspends an obligation the organisation is otherwise under. An
+	// unexplained one is indistinguishable later from a mistake.
+	if body.Status == domain.StatusLegalHold && strings.TrimSpace(body.Reason) == "" {
+		httpx.ErrorWithFields(w, r, http.StatusUnprocessableEntity, "validation_failed",
+			"Invalid request",
+			map[string]any{"reason": "phải nêu lý do khi đặt tạm ngưng vì lý do pháp lý"})
+		return
+	}
+
+	updated, err := h.svc.SetStatus(r.Context(), actor.TenantID, id, body.Status)
+	switch {
+	case errors.Is(err, domain.ErrInvalidTarget):
+		httpx.ErrorWithFields(w, r, http.StatusUnprocessableEntity, "validation_failed",
+			"Invalid request", map[string]any{"status": err.Error()})
+		return
+	case errors.Is(err, domain.ErrNotFound):
+		httpx.Error(w, r, http.StatusNotFound, "not_found", "Link not found")
+		return
+	case err != nil:
+		httpx.Logger(r.Context()).Error("updating link status", "error", err)
+		httpx.Error(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
+		return
+	}
+
+	action := "link.status_changed"
+	if body.Status == domain.StatusLegalHold {
+		action = "link.legal_hold_set"
+	} else if link.Status == domain.StatusLegalHold {
+		// Lifting is the change that lets deletion resume, so it is named
+		// separately: it is the one an auditor looks for.
+		action = "link.legal_hold_lifted"
+	}
+	h.writeAudit(r, actor, action,
+		map[string]any{"link_id": id, "project_id": link.ProjectID},
+		map[string]any{"from": link.Status, "to": body.Status, "reason": body.Reason})
+
+	httpx.JSON(w, r, http.StatusOK, h.present(updated))
+}
+
+// SetAudit attaches the trail writer. Optional at construction so the links
+// module keeps no compile-time dependency on the audit module.
+func (h *Handler) SetAudit(db *postgres.DB, w contracts.AuditWriter) { h.db, h.audit = db, w }
+
+func (h *Handler) writeAudit(r *http.Request, actor authn.Actor, action string, target, payload map[string]any) {
+	if h.db == nil || h.audit == nil {
+		return
+	}
+	err := h.db.InTenantTx(r.Context(), actor.TenantID, func(tx pgx.Tx) error {
+		return h.audit.Write(r.Context(), tx, contracts.AuditEntry{
+			TenantID: actor.TenantID,
+			Actor: contracts.AuditActor{
+				Type: "user", ID: actor.UserID.String(), IPPrefix: httpx.IPPrefix(r),
+			},
+			Action: action, Target: target, Payload: payload,
+		})
+	})
+	if err != nil {
+		httpx.Logger(r.Context()).Error("writing audit entry", "error", err, "action", action)
+	}
 }

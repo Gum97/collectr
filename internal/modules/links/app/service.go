@@ -306,3 +306,27 @@ func (s *Service) SetDefaultDomain(ctx context.Context, tenantID, id uuid.UUID) 
 func (s *Service) RemoveDomain(ctx context.Context, tenantID, id uuid.UUID) error {
 	return s.repo.DeleteDomain(ctx, tenantID, id)
 }
+
+// SetStatus moves a link between active, disabled and legal hold.
+//
+// Deletion is not reachable here: it has its own path with its own audit entry,
+// and a status field that can quietly delete is a status field somebody will
+// eventually set from a dropdown.
+func (s *Service) SetStatus(ctx context.Context, tenantID, id uuid.UUID, status string) (domain.Link, error) {
+	switch status {
+	case domain.StatusActive, domain.StatusDisabled, domain.StatusLegalHold:
+	default:
+		return domain.Link{}, fmt.Errorf("%w: trạng thái phải là active, disabled hoặc legal_hold",
+			domain.ErrInvalidTarget)
+	}
+
+	host, code, err := s.repo.UpdateStatus(ctx, tenantID, id, status)
+	if err != nil {
+		return domain.Link{}, err
+	}
+	// The cached resolution decides whether a scan redirects or is refused, so it
+	// has to go now rather than at the end of its TTL: a link put on hold that
+	// keeps redirecting for another minute is the hold not working.
+	s.Invalidate(ctx, host, code)
+	return s.repo.Get(ctx, tenantID, id)
+}

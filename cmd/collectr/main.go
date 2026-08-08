@@ -191,6 +191,7 @@ func run() error {
 	formStore := formsstore.New(db)
 	formSvc := formsapp.NewService(formStore, cfg.DefaultRetention)
 	formHandler := formsapi.New(formSvc, collector, signer)
+	formHandler.SetReports(analyticsstore.New(db))
 
 	objects, err := buildStorage(cfg)
 	if err != nil {
@@ -321,6 +322,7 @@ func run() error {
 	linkHandler.RegisterAdmin(admin)
 	linkHandler.RegisterDomains(admin)
 	linkHandler.RegisterStats(admin)
+	linkHandler.SetAudit(db, auditWriter)
 	formHandler.RegisterAdmin(admin)
 	consentHandler.RegisterAdmin(admin)
 	auditHandler.RegisterAdmin(admin)
