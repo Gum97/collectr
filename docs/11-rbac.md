@@ -63,6 +63,17 @@ apikey.manage  webhook.manage
 lý và cũng là dấu vết. Ô nhạy cảm vẫn nằm ngoài tầm: chúng niêm phong bằng khoá
 của chủ thể và đường này không niêm phong lại được.
 
+**Lịch sử chỉnh sửa** (`GET /api/v1/submissions/{id}/revisions`) canh bằng
+`submission.read`, không phải `dsr.handle`: đọc lịch sử là đọc câu trả lời, và
+các giá trị đã bị thay thế cũng là câu trả lời. Giá trị của field nhạy cảm bị che
+trừ khi có `submission.read_sensitive` — một field có thể được đánh dấu nhạy cảm
+ở version sau trong khi plaintext cũ vẫn nằm trong cột, và màn này không được
+phép trở thành đường vòng qua lớp che mà lưới áp lên đúng giá trị đó.
+
+Cả hai màn này **không ghi audit khi đọc**, giống lưới dữ liệu. Nếu tổ chức muốn
+mỗi lần đọc dữ liệu nhạy cảm để lại dấu vết thì đó là một quyết định áp cho cả ba
+chỗ, không phải riêng màn lịch sử.
+
 `member.manage` cũng là quyền canh màn **Cài đặt tổ chức** (`/api/v1/org`). Nó
 cho đổi tên tổ chức và các thiết lập của tổ chức — **không** cho đụng tới cấu
 hình triển khai. Điểm cuối lưu trữ, khoá bí mật, giới hạn và thời hạn thuộc về

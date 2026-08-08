@@ -76,7 +76,9 @@ POST          /api/v1/files/{id}/download-url   # → link ký 10 phút, ghi aud
 
 # Chỉnh sửa theo yêu cầu chủ thể
 POST          /api/v1/dsr/submissions/{subject_id}/rectify   # nhân viên sửa hộ, bắt buộc verification_method
+                                                             # 409 identifier_taken nếu giá trị mới đã thuộc chủ thể khác
 GET           /api/v1/dsr/verification-methods
+GET           /api/v1/submissions/{id}/revisions             # lịch sử sửa; ?include_sensitive=true cần read_sensitive
 
 # Tổ chức
 GET|PATCH     /api/v1/org                      # tên + settings; kèm khối deployment CHỈ ĐỌC

@@ -204,10 +204,26 @@ CREATE TABLE forms.submission_revisions (     -- chủ thể sửa dữ liệu �
   submission_id UUID NOT NULL,
   answers_before JSONB NOT NULL,
   changed_by TEXT NOT NULL,                   -- 'subject:<id>' | 'user:<id>'
-  change_source TEXT NOT NULL,                -- dsr_self_service | admin_edit
+  change_source TEXT NOT NULL,                -- dsr_self_service | dsr_operator | admin_edit
   changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
+
+**Ba giá trị `change_source` được giữ riêng có chủ đích.** `dsr_self_service` là
+chủ thể tự sửa qua cổng; `dsr_operator` là chủ thể yêu cầu và nhân viên thực
+hiện, luôn kèm một yêu cầu chỉnh sửa ghi cách xác minh người gọi; `admin_edit`
+dành cho sửa không qua yêu cầu nào và **hiện không đường nào trong sản phẩm ghi
+ra giá trị này**. Gộp chúng lại thì một năm sau không ai phân biệt được "có người
+có quyền đã đổi" với "chủ thể nhờ đổi và ta đã đổi" — mà đó là hai sự việc khác
+nhau, và trường hợp có cơ sở nhất lại là trường hợp mất khả năng chứng minh.
+
+**Sửa ô định danh thì `consent.data_subjects.identifier_hash` đổi theo, trong
+cùng transaction.** Định danh nằm ở hai chỗ: câu trả lời để nguyên văn vì kênh
+liên hệ phải dùng được, và bản HMAC để tra cứu. Sửa mỗi câu trả lời thì người sở
+hữu địa chỉ đúng không vào được dữ liệu của chính họ, còn địa chỉ gõ nhầm — thường
+là của người khác — vẫn giữ quyền vào. Nếu giá trị mới đã thuộc chủ thể khác thì
+thao tác bị từ chối (`409 identifier_taken`) chứ không gộp: gộp hai chủ thể là
+gộp hai lịch sử đồng ý và hai khoá mã hoá.
 
 **`visible_fields` là chi tiết nhỏ nhưng cứu grid.** Nó cho phép phân biệt ba trạng thái ô:
 

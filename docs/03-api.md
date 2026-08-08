@@ -192,6 +192,8 @@ GET    /api/v1/forms/{id}/versions
 GET    /api/v1/forms/{id}/versions/{a}/diff/{b}  → phân loại breaking / non-breaking
 
 GET    /api/v1/forms/{id}/submissions?cursor=&filter=   → grid, column registry hợp nhất mọi version
+                                                          mỗi dòng kèm revision_count (vắng nghĩa là chưa từng sửa)
+GET    /api/v1/submissions/{id}/revisions               → lịch sử sửa, mới nhất trước, kèm cái gì đổi thành cái gì
 POST   /api/v1/forms/{id}/exports          → 202 {job_id}   (async; GHI AUDIT: truy cập hàng loạt DLCN)
 GET    /api/v1/exports/{job_id}            → 200 {status, download_url}
 

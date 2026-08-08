@@ -231,11 +231,13 @@ Lý do đầy đủ ở [docs/05-architecture.md](docs/05-architecture.md).
 - [x] **v0.18** — Cổng chủ thể dữ liệu có giao diện thật; chủ thể xem được cả dữ liệu nhạy cảm của mình
 - [x] **v0.19** — Mã khởi tạo thay cho tài khoản mặc định; màn Cài đặt tổ chức; lưu trữ S3 (MinIO/R2/FPT/AWS)
 - [x] **v0.20** — Sửa chuỗi proxy: giữ IP khách sau Cloudflare/nginx/tunnel, và hiện IP quan sát được ra giao diện
+- [x] **v0.21** — Nhân viên sửa hộ khi chủ thể yêu cầu: bắt buộc ghi cách xác minh, sửa và yêu cầu vào cùng một transaction, chủ thể được báo về **cả địa chỉ cũ lẫn mới**
+- [x] **v0.22** — Màn lịch sử chỉnh sửa (trước đó chỉ đọc được bằng SQL); sửa ô định danh thì khoá tra cứu của chủ thể đi theo, nếu không họ mất quyền vào chính dữ liệu của mình
 
 **v1.0 còn lại:**
 
 - [ ] Đo lại trên hạ tầng tách rời — client và server khác máy. Số hiện tại đo trên cùng một Docker VM nên là **sàn, không phải trần**, và chênh lệch redirect 2,23ms → 7,15ms giữa hai lần đo vẫn **chưa ai giải thích được**.
-- [ ] Tìm kiếm ở màn Dữ liệu. Hiện chỉ lọc theo ngày; khách gọi điện đọc số điện thoại thì người trực không tra được — mà đó cũng là thao tác đầu tiên khi có yêu cầu chủ thể dữ liệu.
+- [ ] **Tìm kiếm ở màn Dữ liệu.** Hiện chỉ lọc theo ngày. Đây giờ là khoảng trống lớn nhất: v0.21 dựng đường cho nhân viên sửa hộ ngay trong cuộc gọi, nhưng thao tác **đầu tiên** của cuộc gọi đó là tìm bản ghi theo số điện thoại hay email khách vừa đọc — và điều đó chưa làm được. Cả luồng sửa hộ lẫn mọi yêu cầu chủ thể dữ liệu đều bắt đầu ở đây.
 - [ ] Diễn tập khôi phục sao lưu, có bấm giờ.
 - [ ] Chốt chính sách vá lỗ hổng trước khi cắt release đầu tiên: `SECURITY.md` hiện chưa nói ai được báo, trong bao lâu, và bản nào còn được hỗ trợ.
 
