@@ -1,0 +1,420 @@
+/* Stylesheet for the public pages.
+ *
+ * Inlined into every page by the Go handler rather than linked, and written by
+ * hand rather than generated from Tailwind. Three reasons, in order of weight:
+ *
+ *   1. One round trip. This is the page a customer on a phone waits for, and a
+ *      second request for 1.3 KB of CSS costs more in latency than the bytes
+ *      cost in transfer.
+ *   2. No build coupling. /consent/{id} is legal evidence and must render from
+ *      the binary alone -- including the day someone forgets to run Vite.
+ *   3. The admin build is 89.5 KB gzip. None of that is needed to draw six
+ *      inputs and a consent block.
+ *
+ * Colours are the tokens from tailwind.config.js, repeated as literals because
+ * this file cannot import them. Keep the two in step by hand; they are read off
+ * the same wireframes.
+ *
+ * Sizes are NOT the wireframe's. Those drawings are 320px-wide mock-ups where
+ * 9px text stands in for body copy; rendered at that size on a real phone they
+ * are unreadable, and any input below 16px makes iOS Safari zoom on focus,
+ * which throws the respondent out of the layout mid-form.
+ */
+
+:root {
+  --canvas: #eceee9;
+  --surface: #fff;
+  --panel: #fafbfa;
+  --ink: #14171a;
+  --muted: #5b6470;
+  --faint: #8a929c;
+  --chrome: #eef0f2;
+  --accent: #3d5a3c;
+  --accent-dark: #2c4230;
+  --ok: #2c6e49;
+  /* No webfonts. The brand faces are 52 KB per weight once the Vietnamese and
+     latin subsets both load, which on this page would outweigh the form module
+     fifteen times over. Every system stack below covers Vietnamese fully. */
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font: 400 16px/1.55 var(--sans);
+}
+
+/* Focus must stay visible: somebody filling this in on a keyboard or a switch
+   device has to know which control they are about to consent with. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pg {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+}
+
+.pg-head { margin-bottom: 18px; }
+
+.pg-title {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.pg-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.pg-url {
+  margin: 0 0 12px;
+  color: var(--faint);
+  font: 12px/1.4 var(--mono);
+  word-break: break-all;
+}
+
+.card {
+  background: var(--surface);
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.card-soft {
+  background: var(--panel);
+  border: 1.5px dashed var(--faint);
+}
+
+.label {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font: 11px/1.3 var(--mono);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.strong { font-weight: 600; }
+
+.meta {
+  color: var(--muted);
+  font: 12px/1.5 var(--mono);
+  word-break: break-word;
+}
+
+.note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.warn {
+  margin: 10px 0 0;
+  padding-top: 9px;
+  border-top: 1px dashed var(--chrome);
+  color: var(--accent);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.hr { border: 0; border-top: 1px dashed var(--chrome); margin: 10px 0; }
+
+.foot {
+  margin-top: 20px;
+  color: var(--faint);
+  font: 12px/1.5 var(--mono);
+  text-align: center;
+}
+
+a { color: var(--ink); }
+a:hover { color: var(--accent-dark); }
+
+/* ---------- buttons ---------- */
+
+.btn {
+  display: inline-block;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 600 15px var(--sans);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn + .btn { margin-top: 8px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--ink); color: #fff; }
+.btn-ghost { border-style: dashed; border-color: var(--faint); }
+.btn-danger { border-color: var(--accent); color: var(--accent); }
+.btn-sm { width: auto; padding: 6px 12px; font-size: 14px; }
+
+/* ---------- the form module (classes owned by web/src/public/form.ts) ----------
+   form.ts builds this markup at runtime and the server renders a no-JS copy of
+   the consent block into the same container, so both are styled by one set of
+   rules. Renaming anything here breaks the module silently. */
+
+.cf { margin: 0; }
+
+.cf-field { margin-bottom: 18px; }
+
+.cf-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.cf-req { color: var(--accent); }
+
+.cf-help {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cf-input {
+  display: block;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--ink);
+  /* 16px exactly: anything smaller and iOS Safari zooms the viewport on focus. */
+  font: 400 16px var(--sans);
+}
+
+textarea.cf-input { min-height: 6rem; resize: vertical; }
+
+.cf-options { display: flex; flex-direction: column; gap: 8px; }
+
+.cf-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  background: var(--surface);
+  font-size: 15px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+/* 22px targets: a checkbox that records consent is the last control on the page
+   that should be hard to hit accurately. */
+.cf-option input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.cf-option input:disabled { cursor: not-allowed; }
+
+.cf-rating { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.cf-star {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 600 16px var(--sans);
+  cursor: pointer;
+}
+
+.cf-star[aria-pressed="true"] { background: var(--ink); color: #fff; }
+
+.cf-consent {
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  background: var(--panel);
+}
+
+.cf-consent legend {
+  padding: 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.cf-consent .cf-option { margin-bottom: 8px; }
+.cf-consent .cf-help { margin: -4px 0 10px 32px; }
+
+.cf-doc {
+  display: block;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1.5px dashed var(--faint);
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  text-decoration: none;
+}
+
+.cf-doc u { text-decoration: underline; }
+
+/* role="status": empty until it says something, so a screen reader does not
+   announce a blank region on load. */
+.cf-status:empty { display: none; }
+
+.cf-status {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--accent);
+  border-radius: 3px;
+  background: #fdf6f3;
+  color: var(--accent-dark);
+  font-size: 14px;
+}
+
+.cf-submit {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  background: var(--ink);
+  color: #fff;
+  font: 700 16px var(--sans);
+  cursor: pointer;
+}
+
+.cf-submit:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------- no-JS fallback ---------- */
+
+.nojs {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1.5px solid var(--accent);
+  border-radius: 3px;
+  background: #fdf6f3;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.nojs p { margin: 0 0 6px; }
+.nojs p:last-child { margin-bottom: 0; }
+
+/* ---------- data subject portal ---------- */
+
+.p-slot { min-height: 4rem; }
+
+.p-rights { list-style: none; margin: 0; padding: 0; }
+
+.p-right {
+  padding: 12px 0;
+  border-top: 1px dashed var(--chrome);
+}
+
+.p-right:first-child { border-top: 0; padding-top: 0; }
+.p-right h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.p-right p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.p-right-danger h3 { color: var(--accent); }
+
+/* ---------- dead link ---------- */
+
+.dead { text-align: center; padding-top: 8vh; }
+
+.dead-mark {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  border: 1.5px dashed var(--faint);
+  border-radius: 50%;
+}
+
+.dead-solid { border-style: solid; border-color: var(--ink); }
+.dead-legal { border-style: solid; border-color: var(--accent); }
+.dead-code { color: var(--faint); font: 12px var(--mono); margin: 0 0 12px; }
+.dead h1 { margin: 0 0 10px; font-size: 20px; }
+.dead-legal-title { color: var(--accent); }
+.dead p { margin: 0 auto; max-width: 26rem; color: var(--muted); font-size: 15px; }
+
+/* ---------- consent document permalink ---------- */
+
+.doc-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.doc-body {
+  font-size: 16px;
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+
+.doc-body h1 { font-size: 20px; }
+.doc-body h2 { font-size: 17px; }
+.doc-body h3 { font-size: 16px; }
+.doc-body img { max-width: 100%; height: auto; }
+.doc-body table { width: 100%; border-collapse: collapse; }
+.doc-body td, .doc-body th { border: 1px solid var(--chrome); padding: 6px 8px; }
+
+.doc-purposes { margin: 0; padding-left: 1.1rem; font-size: 15px; }
+.doc-purposes li { margin-bottom: 4px; }
+
+.doc-hash { word-break: break-all; }
+
+/* ---------- print ----------
+   /consent/{id} is the document a person hands to a lawyer or a regulator, so
+   it has to survive Ctrl+P: no backgrounds burning ink, no controls that mean
+   nothing on paper, and every link spelled out because paper cannot be
+   clicked. */
+
+@media print {
+  :root { --canvas: #fff; --surface: #fff; --panel: #fff; --muted: #333; }
+
+  body { background: #fff; color: #000; font-size: 11pt; }
+
+  .pg { max-width: none; padding: 0; }
+
+  .card { border: 1pt solid #000; break-inside: avoid; }
+
+  .card-soft { border-style: solid; }
+
+  .no-print, .btn, .cf-submit, .p-slot { display: none !important; }
+
+  .doc-body { font-size: 11pt; }
+
+  .doc-body h1, .doc-body h2, .doc-body h3 { break-after: avoid; }
+
+  a[href^="http"]::after,
+  a[href^="/"]::after {
+    content: " (" attr(href) ")";
+    font-family: var(--mono);
+    font-size: 9pt;
+  }
+
+  .print-only { display: block !important; }
+}
+
+.print-only { display: none; }

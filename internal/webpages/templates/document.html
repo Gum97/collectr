@@ -1,0 +1,32 @@
+{{define "main"}}
+<p class="pg-url">{{.URL}}</p>
+
+<section class="card doc-head">
+  <div>
+    <p class="strong">Bản v{{.Doc.Version}}{{if not .Doc.PublishedAt.IsZero}} · công bố {{vndate .Doc.PublishedAt}}{{end}}</p>
+    <!-- The digest is printed in full, not abbreviated. Somebody checking a
+         consent record against this page is comparing it character by
+         character, and half a hash proves half of nothing. -->
+    <p class="meta doc-hash">sha256 {{.Doc.Hash}}</p>
+  </div>
+</section>
+
+<h1 class="pg-title">{{.Doc.Title}}</h1>
+
+<article class="doc-body">{{.Doc.BodyHTML}}</article>
+
+{{- with .Doc.Purposes}}
+<section class="card card-soft">
+  <p class="strong">Mục đích được nêu trong bản này</p>
+  <ul class="doc-purposes">
+    {{- range .}}
+    <li>{{.}}</li>
+    {{- end}}
+  </ul>
+</section>
+{{- end}}
+
+<p class="note">Bản này không sửa được sau khi công bố. Muốn đổi nội dung thì phải ra bản mới, và người đã đồng ý bản cũ vẫn giữ nguyên bản cũ của họ.</p>
+
+<p class="foot print-only">In từ {{.URL}}</p>
+{{end}}
