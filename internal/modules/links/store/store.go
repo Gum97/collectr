@@ -122,7 +122,12 @@ func (s *Store) Get(ctx context.Context, tenantID, id uuid.UUID) (domain.Link, e
 //
 // Keyset rather than OFFSET: offsets both drift when rows are inserted mid-scan
 // and degrade on deep pages, and this list is the main admin screen.
-func (s *Store) ListByProject(ctx context.Context, tenantID, projectID uuid.UUID, before time.Time, limit int) ([]domain.Link, error) {
+// formID, when non-nil, narrows the list to links pointing at one form.
+//
+// Added because the publish dialog has to answer "what is currently pointing at
+// this form" before somebody freezes a new version, and the only way to answer
+// it was to page through every link in the project by eye.
+func (s *Store) ListByProject(ctx context.Context, tenantID, projectID uuid.UUID, formID *uuid.UUID, before time.Time, limit int) ([]domain.Link, error) {
 	const q = `
 		SELECT l.id, l.tenant_id, l.project_id, l.domain_id, d.host,
 		       l.code, coalesce(l.target_url, ''),
@@ -130,12 +135,13 @@ func (s *Store) ListByProject(ctx context.Context, tenantID, projectID uuid.UUID
 		FROM links.links l
 		JOIN links.domains d ON d.id = l.domain_id
 		WHERE l.project_id = $1 AND l.status <> 'deleted' AND l.created_at < $2
+		  AND ($4::uuid IS NULL OR l.form_id = $4)
 		ORDER BY l.created_at DESC
 		LIMIT $3`
 
 	var out []domain.Link
 	err := s.db.InTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, q, projectID, before, limit)
+		rows, err := tx.Query(ctx, q, projectID, before, limit, formID)
 		if err != nil {
 			return err
 		}

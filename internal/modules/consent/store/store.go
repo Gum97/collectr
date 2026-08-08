@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -464,4 +465,46 @@ func (s *Store) ActiveDocumentBody(ctx context.Context, tenantID uuid.UUID, kind
 		return contracts.DocumentBody{}, fmt.Errorf("reading active document body: %w", err)
 	}
 	return d, nil
+}
+
+// WithdrawalCount counts consent withdrawals in a window, by purpose.
+//
+// Counted from consent.records rather than from current_consents: the current
+// table holds one row per subject and purpose and is overwritten, so a subject
+// who withdrew and later granted again leaves nothing behind in it. The record
+// table is append-only, which is what makes "how many people withdrew this
+// month" answerable at all -- and that question is the one that says whether a
+// purpose is being pushed too hard.
+func (s *Store) WithdrawalCount(ctx context.Context, tenantID uuid.UUID, since time.Time) (int, map[string]int, error) {
+	const q = `
+		SELECT p.code, count(*)
+		FROM consent.records r
+		JOIN consent.purposes p ON p.id = r.purpose_id
+		WHERE r.tenant_id = $1 AND r.action = $2 AND r.occurred_at >= $3
+		GROUP BY p.code
+		ORDER BY 2 DESC`
+
+	byPurpose := map[string]int{}
+	total := 0
+	err := s.db.InTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, q, tenantID, contracts.ConsentWithdrawn, since)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var code string
+			var n int
+			if err := rows.Scan(&code, &n); err != nil {
+				return err
+			}
+			byPurpose[code] = n
+			total += n
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return 0, nil, fmt.Errorf("counting withdrawals: %w", err)
+	}
+	return total, byPurpose, nil
 }

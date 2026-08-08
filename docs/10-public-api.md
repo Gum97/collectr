@@ -56,7 +56,7 @@ CREATE UNIQUE INDEX ON iam.api_keys (prefix);
 
 ```
 # Links
-GET|POST      /api/v1/links
+GET|POST      /api/v1/links                    # GET: ?project_id= &form_id= &cursor= &limit=
 GET|PATCH|DEL /api/v1/links/{id}
 POST          /api/v1/links/bulk              # ≤ 1000 link/lần, trả kết quả từng dòng
 GET           /api/v1/links/{id}/stats?from=&to=
@@ -77,6 +77,7 @@ POST          /api/v1/files/{id}/download-url   # → link ký 10 phút, ghi aud
 # Consent (chỉ đọc qua API — ghi phải qua form thật để có bằng chứng)
 GET           /api/v1/subjects/{id}/consents
 GET           /api/v1/consent/purposes
+GET           /api/v1/consent/withdrawals      # ?days=30 → tổng + tách theo mục đích
 
 # Webhooks
 GET|POST      /api/v1/webhooks

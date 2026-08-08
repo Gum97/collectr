@@ -100,6 +100,7 @@ Thiết kế bám theo **Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15** 
 - Nhiều tên miền: chạy rút gọn trên `rutgon.example.com`, biểu mẫu trên `form.example.com`
 - Rate limit hai tầng cho endpoint công khai
 - Tự vận hành bằng một lệnh, không phụ thuộc dịch vụ đám mây nào
+- Lưu tệp trên đĩa, hoặc **bất kỳ thứ gì nói giao thức S3**: MinIO, Cloudflare R2, FPT Cloud Object Storage, AWS — khác nhau đúng một dòng endpoint
 - Dữ liệu không bao giờ rời khỏi hạ tầng của bạn
 
 ## Bắt đầu nhanh
@@ -164,6 +165,20 @@ curl -X POST http://localhost/api/v1/members/invitations -b cookies.txt \
 | `SETUP_TOKEN` | tự sinh | Mã cho endpoint tạo chủ sở hữu đầu tiên. Bỏ trống thì máy chủ tự sinh và in ra log |
 | `PUBLIC_WRITE_IP_LIMIT` | `60` | Lượt gửi/tải tệp mỗi phút cho mỗi dải /24. Nâng lên khi khách đi chung một NAT (hội chợ, văn phòng) |
 | `PUBLIC_WRITE_FORM_LIMIT` | `600` | Lượt gửi mỗi phút cho mỗi biểu mẫu |
+| `STORAGE_DRIVER` | `local` | `local` hoặc `s3` |
+| `STORAGE_S3_ENDPOINT` | — | `minio:9000`, `<acc>.r2.cloudflarestorage.com`, `s3.cloud.fpt.vn`, `s3.amazonaws.com` |
+| `STORAGE_S3_BUCKET` · `_ACCESS_KEY` · `_SECRET_KEY` | — | Bắt buộc khi `STORAGE_DRIVER=s3` |
+
+Tệp đính kèm được **mã hoá trước khi rời khỏi tiến trình**, bằng khoá riêng của từng chủ thể dữ liệu. Bucket chỉ chứa ciphertext — nhà cung cấp, một bucket policy đặt sai, hay một bản sao lưu bị chép đi đều chỉ thu được byte không ai đọc được. Đó cũng là lý do link tải **không** phải presigned URL của S3: trình duyệt nhận về sẽ là bản mã. Ứng dụng phục vụ byte, vì nó là chỗ giữ khoá, kiểm quyền và ghi nhật ký.
+
+Thử bằng MinIO tại chỗ trước khi trỏ ra cloud:
+
+```bash
+docker compose --profile s3 up -d minio
+STORAGE_DRIVER=s3 STORAGE_S3_ENDPOINT=http://minio:9000 \
+STORAGE_S3_BUCKET=collectr STORAGE_S3_ACCESS_KEY=... STORAGE_S3_SECRET_KEY=... \
+  docker compose up -d collectr worker
+```
 | `STORAGE_DRIVER` | `local` | `local` hoặc `s3` |
 | `STORAGE_LOCAL_PATH` | `/data/files` | Thư mục lưu tệp khi dùng `local` |
 | `STORAGE_S3_*` | — | Endpoint, bucket, khóa truy cập khi dùng `s3` |

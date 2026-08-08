@@ -149,6 +149,18 @@ export function ComplianceCentre() {
   const [params, setParams] = useSearchParams()
   const [windowDays, setWindowDays] = useState(30)
 
+  // Counted from the append-only record table, so a subject who withdrew and
+  // later granted again still shows up. current_consents is overwritten and
+  // would report that person as never having withdrawn at all.
+  const withdrawals = useQuery({
+    queryKey: ['consent-withdrawals', windowDays],
+    queryFn: () =>
+      api.get<{ total: number; by_purpose: Record<string, number> }>(
+        `/api/v1/consent/withdrawals?days=${windowDays}`,
+      ),
+    enabled: can(me.data, 'consent.manage'),
+  })
+
   const raw = params.get('tab')
   const tab: TabID = (TAB_IDS as readonly string[]).includes(raw ?? '') ? (raw as TabID) : 'requests'
 
@@ -240,10 +252,18 @@ export function ComplianceCentre() {
         />
         <Metric
           label="RÚT ĐỒNG Ý"
-          value="—"
-          // Not zero: nobody has counted. Printing 0 here would read as "nobody
-          // withdrew", which is a claim this screen cannot currently make.
-          hint={`chưa có API đếm lượt rút trong ${windowDays} ngày`}
+          // Still a dash while the request is in flight or has failed. Zero and
+          // "nobody counted" lead to opposite conclusions about whether a
+          // purpose is being pushed too hard, so the screen never guesses one
+          // for the other.
+          value={withdrawals.data ? num(withdrawals.data.total) : '—'}
+          hint={
+            withdrawals.isPending
+              ? 'đang đếm…'
+              : withdrawals.error
+                ? 'không đọc được số lượt rút'
+                : `trong ${windowDays} ngày`
+          }
         />
         <Metric
           label="CHUỖI HASH"

@@ -382,7 +382,21 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 
-	links, err := h.svc.List(r.Context(), actor.TenantID, projectID, before, limit)
+	// Optional. An unparseable value is refused rather than ignored: silently
+	// listing every link in the project when the caller asked for one form's is
+	// the kind of wrong answer that reads as "this form has no links".
+	var formID *uuid.UUID
+	if raw := r.URL.Query().Get("form_id"); raw != "" {
+		parsed, err := uuid.Parse(raw)
+		if err != nil {
+			httpx.ErrorWithFields(w, r, http.StatusUnprocessableEntity, "validation_failed",
+				"Invalid request", map[string]any{"form_id": "must be a uuid"})
+			return
+		}
+		formID = &parsed
+	}
+
+	links, err := h.svc.List(r.Context(), actor.TenantID, projectID, formID, before, limit)
 	if err != nil {
 		httpx.Logger(r.Context()).Error("listing links", "error", err)
 		httpx.Error(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")

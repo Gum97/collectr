@@ -7,6 +7,7 @@ import (
 	"html"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -34,6 +35,7 @@ func (h *Handler) RegisterPublic(mux *http.ServeMux) {
 func (h *Handler) RegisterAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/consent/documents", h.listDocuments)
 	mux.HandleFunc("GET /api/v1/consent/purposes", h.listPurposes)
+	mux.HandleFunc("GET /api/v1/consent/withdrawals", h.withdrawals)
 	mux.HandleFunc("POST /api/v1/consent/documents", h.createDocument)
 	mux.HandleFunc("POST /api/v1/consent/purposes", h.createPurpose)
 }
@@ -257,4 +259,44 @@ func (h *Handler) listPurposes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, r, http.StatusOK, map[string]any{"data": purposes})
+}
+
+// withdrawals reports how many people withdrew consent in a window.
+//
+// The compliance screen showed a dash here and said so plainly, because zero
+// and "nobody counted" lead to opposite conclusions: a purpose nobody is
+// withdrawing from and a purpose nobody has measured look identical if the
+// number is invented.
+func (h *Handler) withdrawals(w http.ResponseWriter, r *http.Request) {
+	actor, ok := authn.ActorFrom(r.Context())
+	if !ok || !actor.Can(authn.CapConsentManage) {
+		httpx.Error(w, r, http.StatusForbidden, "forbidden", "Insufficient permissions")
+		return
+	}
+
+	days := 30
+	if raw := r.URL.Query().Get("days"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 365 {
+			httpx.ErrorWithFields(w, r, http.StatusUnprocessableEntity, "validation_failed",
+				"Invalid request", map[string]any{"days": "must be between 1 and 365"})
+			return
+		}
+		days = n
+	}
+
+	since := time.Now().UTC().AddDate(0, 0, -days)
+	total, byPurpose, err := h.store.WithdrawalCount(r.Context(), actor.TenantID, since)
+	if err != nil {
+		httpx.Logger(r.Context()).Error("counting withdrawals", "error", err)
+		httpx.Error(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
+		return
+	}
+
+	httpx.JSON(w, r, http.StatusOK, map[string]any{
+		"days":       days,
+		"since":      since,
+		"total":      total,
+		"by_purpose": byPurpose,
+	})
 }

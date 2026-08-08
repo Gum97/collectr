@@ -467,7 +467,19 @@ func buildStorage(cfg config.Config) (storage.Storage, error) {
 	case "local":
 		return storage.NewLocal(cfg.Storage.LocalPath, cfg.BaseURL, cfg.VisitPepper)
 	case "s3":
-		return nil, fmt.Errorf("STORAGE_DRIVER=s3 is not implemented yet; use local storage")
+		// Bounded: an unreachable endpoint must fail the boot rather than hang it,
+		// because a container stuck in start-up looks the same to an orchestrator
+		// as one doing slow work.
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		return storage.NewS3(ctx, storage.S3Options{
+			Endpoint:  cfg.Storage.S3.Endpoint,
+			Bucket:    cfg.Storage.S3.Bucket,
+			Region:    cfg.Storage.S3.Region,
+			AccessKey: cfg.Storage.S3.AccessKey,
+			SecretKey: cfg.Storage.S3.SecretKey,
+			UseSSL:    cfg.Storage.S3.UseSSL,
+		})
 	default:
 		return nil, fmt.Errorf("unknown storage driver %q", cfg.Storage.Driver)
 	}

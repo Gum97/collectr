@@ -32,7 +32,7 @@ type Repository interface {
 	Resolve(ctx context.Context, host, code string) (domain.Resolution, error)
 	Insert(ctx context.Context, l domain.Link) error
 	Get(ctx context.Context, tenantID, id uuid.UUID) (domain.Link, error)
-	ListByProject(ctx context.Context, tenantID, projectID uuid.UUID, before time.Time, limit int) ([]domain.Link, error)
+	ListByProject(ctx context.Context, tenantID, projectID uuid.UUID, formID *uuid.UUID, before time.Time, limit int) ([]domain.Link, error)
 	UpdateStatus(ctx context.Context, tenantID, id uuid.UUID, status string) (host, code string, err error)
 	DefaultDomain(ctx context.Context, tenantID uuid.UUID) (uuid.UUID, string, error)
 	ListDomains(ctx context.Context, tenantID uuid.UUID) ([]domain.Domain, error)
@@ -253,14 +253,14 @@ func (s *Service) Get(ctx context.Context, tenantID, id uuid.UUID) (domain.Link,
 }
 
 // List returns a page of links for a project.
-func (s *Service) List(ctx context.Context, tenantID, projectID uuid.UUID, before time.Time, limit int) ([]domain.Link, error) {
+func (s *Service) List(ctx context.Context, tenantID, projectID uuid.UUID, formID *uuid.UUID, before time.Time, limit int) ([]domain.Link, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
 	if before.IsZero() {
 		before = time.Now().UTC().Add(time.Minute)
 	}
-	return s.repo.ListByProject(ctx, tenantID, projectID, before, limit)
+	return s.repo.ListByProject(ctx, tenantID, projectID, formID, before, limit)
 }
 
 // Delete soft-deletes a link; visitors then receive 410 rather than 404.
