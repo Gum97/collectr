@@ -194,3 +194,90 @@ Một cài đặt mới chưa có ai sở hữu. Instance nằm sau TLS tự đ�
 - [ ] Xác nhận không có dữ liệu cá nhân rời khỏi hạ tầng (không CDN, không font external, không telemetry)
 - [ ] Quy trình xử lý sự cố rò rỉ dữ liệu (ai thông báo, cho ai, trong bao lâu) đã có văn bản
 - [ ] Hồ sơ đánh giá tác động xử lý dữ liệu cá nhân đã lập (ngoài scope hệ thống — cần làm thủ công ở MVP)
+
+## 7.8 Cấu hình & triển khai
+
+Chuyển từ README sang đây khi README dài quá 300 dòng: đây là tài liệu người vận
+hành mở khi đang dựng hệ thống, không phải thứ người ta đọc để quyết định có thử
+sản phẩm hay không.
+
+### Cấu hình
+
+| Biến môi trường | Mặc định | Ý nghĩa |
+|---|---|---|
+| `BASE_URL` | `http://localhost:8080` | Origin của ứng dụng: trang biểu mẫu, cổng DSR, API quản trị |
+| `SHORT_URL_BASE` | `BASE_URL` | Origin của link rút gọn. Đặt riêng để chạy shortener trên tên miền của nó |
+| `DATABASE_URL` | — | Chuỗi kết nối PostgreSQL |
+| `REDIS_URL` | — | Chuỗi kết nối Redis |
+| `TENANT_KEK` | — | **Bắt buộc.** Khóa gốc mã hóa, 32 byte base64 |
+| `SETUP_TOKEN` | tự sinh | Mã cho endpoint tạo chủ sở hữu đầu tiên. Bỏ trống thì máy chủ tự sinh và in ra log |
+| `PUBLIC_WRITE_IP_LIMIT` | `60` | Lượt gửi/tải tệp mỗi phút cho mỗi dải /24. Nâng lên khi khách đi chung một NAT (hội chợ, văn phòng) |
+| `PUBLIC_WRITE_FORM_LIMIT` | `600` | Lượt gửi mỗi phút cho mỗi biểu mẫu |
+| `STORAGE_DRIVER` | `local` | `local` (đĩa) hoặc `s3`. **Mặc định là đĩa** — MinIO không chạy trừ khi bạn bật profile `s3` |
+| `STORAGE_S3_ENDPOINT` | — | `minio:9000`, `<acc>.r2.cloudflarestorage.com`, `s3.cloud.fpt.vn`, `s3.amazonaws.com` |
+| `STORAGE_S3_BUCKET` · `_ACCESS_KEY` · `_SECRET_KEY` | — | Bắt buộc khi `STORAGE_DRIVER=s3` |
+
+Tệp đính kèm được **mã hoá trước khi rời khỏi tiến trình**, bằng khoá riêng của từng chủ thể dữ liệu. Bucket chỉ chứa ciphertext — nhà cung cấp, một bucket policy đặt sai, hay một bản sao lưu bị chép đi đều chỉ thu được byte không ai đọc được. Đó cũng là lý do link tải **không** phải presigned URL của S3: trình duyệt nhận về sẽ là bản mã. Ứng dụng phục vụ byte, vì nó là chỗ giữ khoá, kiểm quyền và ghi nhật ký.
+
+Thử bằng MinIO tại chỗ trước khi trỏ ra cloud:
+
+```bash
+docker compose --profile s3 up -d minio
+STORAGE_DRIVER=s3 STORAGE_S3_ENDPOINT=http://minio:9000 \
+STORAGE_S3_BUCKET=collectr STORAGE_S3_ACCESS_KEY=... STORAGE_S3_SECRET_KEY=... \
+  docker compose up -d collectr worker
+```
+| `STORAGE_DRIVER` | `local` | `local` (đĩa) hoặc `s3`. **Mặc định là đĩa** — MinIO không chạy trừ khi bạn bật profile `s3` |
+| `STORAGE_LOCAL_PATH` | `/data/files` | Thư mục lưu tệp khi dùng `local` |
+| `STORAGE_S3_*` | — | Endpoint, bucket, khóa truy cập khi dùng `s3` |
+| `DSR_SLA_HOURS` | `72` | Hạn xử lý yêu cầu của chủ thể dữ liệu |
+| `DEFAULT_RETENTION_DAYS` | `730` | Thời hạn lưu mặc định |
+| `RAW_EVENT_RETENTION_DAYS` | `90` | Thời hạn lưu sự kiện thô |
+| `DEPLOYMENT_ROLE` | `controller` | `controller` (tự dùng) hoặc `processor` (chạy dịch vụ cho bên khác) |
+
+| `SMTP_HOST` `SMTP_FROM` | — | Bắt buộc để mời đồng nghiệp và để chủ thể dữ liệu nhận được liên kết truy cập |
+
+> [!WARNING]
+> Chưa cấu hình SMTP thì lời mời và liên kết truy cập được **ghi ra log thay vì gửi đi**. Dùng để thử được, **không dùng thật được** — người khác không đọc được log của bạn.
+>
+> Thử tại chỗ: `docker compose --profile dev up -d mailpit`, đặt `SMTP_HOST=mailpit` `SMTP_PORT=1025` `SMTP_STARTTLS=false`, rồi đọc mail ở http://localhost:8025
+
+Danh sách đầy đủ: [`.env.example`](.env.example).
+
+### Đặt sau proxy khác (Cloudflare, nginx, tunnel)
+
+Collectr đọc địa chỉ khách từ `X-Forwarded-For`, lùi lại `TRUSTED_PROXY_HOPS` chặng. Đặt sai thì **không có lỗi nào cả** — địa chỉ sai lặng lẽ đi vào bản ghi đồng ý (bằng chứng ai đã đồng ý, từ đâu) và thành khoá của giới hạn theo IP, khiến mọi khách qua cùng một proxy dùng chung một hạn mức 60/phút.
+
+| Cách triển khai | `TRUSTED_PROXY_HOPS` | Ghi chú |
+|---|---|---|
+| Chỉ Caddy (mặc định) | `1` | Không cần đổi gì |
+| Cloudflare / nginx → Caddy → app | `2` | Caddy nối thêm một chặng của chính nó |
+| Tunnel hoặc nginx → thẳng app, bỏ Caddy | `1` | Mất HSTS, cái còn lại app tự đặt |
+| Chạy binary trần ra mạng | `0` | Bỏ qua `X-Forwarded-For` hoàn toàn |
+
+Với bất cứ thứ gì đứng trước Caddy, `deploy/Caddyfile` phải có `trusted_proxies private_ranges` — nếu không Caddy **thay** header bằng địa chỉ nó thấy và IP khách mất trước khi tới app. Thiếu một trong hai vế còn tệ hơn thiếu cả hai: `hops=2` với header một entry sẽ trỏ ra ngoài mảng rồi rơi về địa chỉ socket, im lặng.
+
+**Sau tunnel, Caddy không xin được chứng chỉ công cộng.** Thử thách ACME đi tới Cloudflare chứ không tới origin, nên Caddy thất bại rồi ngừng phục vụ 443 — triệu chứng là `502` từ tunnel. Thêm `tls internal` vào khối site: tunnel đã lo TLS công cộng rồi, đoạn origin chỉ cần mã hoá chứ không cần chứng chỉ ai cũng tin.
+
+**`SITE_ADDRESS` phải đúng hostname khách thật sự truy cập.** Caddy khớp site theo Host; Host không khớp site nào thì nó trả **200 với thân rỗng** — không phải 404. Trang trắng, log toàn 200. Nếu các trang trống rỗng, kiểm chỗ này trước.
+
+Đừng suy luận, hãy đo: mở **Cài đặt tổ chức** từ máy của bạn và so dòng *"IP của bạn như hệ thống ghi nhận"* với IP thật. Khớp là đúng; ra địa chỉ proxy hay dải nội bộ là sai.
+
+> [!WARNING]
+> `make secrets` sinh ra `TENANT_KEK` trong `.env`. **Sao lưu khóa này ở nơi tách biệt với bản sao lưu cơ sở dữ liệu.** Mất nó là mất vĩnh viễn mọi trường nhạy cảm và mọi tệp đã mã hóa — không có đường khôi phục. Đó chính là thuộc tính khiến tính năng xóa triệt để hoạt động.
+
+### Chuyển sang object storage
+
+Khi dung lượng tệp vượt ~300 GB, hoặc khi chạy nhiều hơn một instance:
+
+```bash
+STORAGE_DRIVER=s3
+STORAGE_S3_ENDPOINT=http://minio:9000
+STORAGE_S3_BUCKET=collectr
+```
+```bash
+docker compose --profile s3 up -d      # kèm MinIO
+```
+
+Không cần sửa dòng code nào — cả hai driver dùng chung một giao diện `Storage`. Job chép dữ liệu từ `local` sang `s3` (kèm đối chiếu checksum) sẽ có ở v0.2.
+

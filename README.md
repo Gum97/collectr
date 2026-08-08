@@ -45,6 +45,10 @@ Thiết kế bám theo **Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15** 
 
 **8 vai trò, 16 quyền** — ô `✕` là *cố tình không cấp*: DPO giám sát nhưng không xuất được dữ liệu. Ranh giới ai đó vẽ có chủ đích, không phải chỗ trống.
 
+![Nhật ký audit với chuỗi hash](docs/images/audit.png)
+
+**Nhật ký chỉ ghi thêm** — mỗi bản ghi mang sha256 của bản ghi trước nó, nên sửa một dòng làm sai hash của chính nó *và của mọi dòng phía sau*. Nút **Kiểm toàn vẹn** tính lại toàn chuỗi. Đây là bằng chứng *phát hiện* can thiệp, không phải chống can thiệp — và role ứng dụng chỉ có `INSERT`/`SELECT` trên bảng này, nên hệ thống đang xử lý dữ liệu cá nhân không thể viết lại hồ sơ về việc mình đã làm.
+
 ![Link rút gọn và QR](docs/images/links.png)
 
 **Link rút gọn & QR** — hai con số lượt bấm cạnh nhau vì chúng đến từ hai nguồn phủ hai khoảng thời gian khác nhau. Cột "dải mạng" **không phải** số người.
@@ -150,85 +154,17 @@ curl -X POST http://localhost/api/v1/members/invitations -b cookies.txt \
 }'
 ```
 
-### Đặt sau proxy khác (Cloudflare, nginx, tunnel)
+### Cấu hình & triển khai
 
-Collectr đọc địa chỉ khách từ `X-Forwarded-For`, lùi lại `TRUSTED_PROXY_HOPS` chặng. Đặt sai thì **không có lỗi nào cả** — địa chỉ sai lặng lẽ đi vào bản ghi đồng ý (bằng chứng ai đã đồng ý, từ đâu) và thành khoá của giới hạn theo IP, khiến mọi khách qua cùng một proxy dùng chung một hạn mức 60/phút.
+Biến môi trường, đặt sau Cloudflare/nginx/tunnel, chuyển sang object storage: xem [docs/07-operations.md](docs/07-operations.md#78-cấu-hình--triển-khai).
 
-| Cách triển khai | `TRUSTED_PROXY_HOPS` | Ghi chú |
-|---|---|---|
-| Chỉ Caddy (mặc định) | `1` | Không cần đổi gì |
-| Cloudflare / nginx → Caddy → app | `2` | Caddy nối thêm một chặng của chính nó |
-| Tunnel hoặc nginx → thẳng app, bỏ Caddy | `1` | Mất HSTS, cái còn lại app tự đặt |
-| Chạy binary trần ra mạng | `0` | Bỏ qua `X-Forwarded-For` hoàn toàn |
+Ba thứ hay sai nhất, nêu trước ở đây vì chúng đều hỏng **âm thầm**:
 
-Với bất cứ thứ gì đứng trước Caddy, `deploy/Caddyfile` phải có `trusted_proxies private_ranges` — nếu không Caddy **thay** header bằng địa chỉ nó thấy và IP khách mất trước khi tới app. Thiếu một trong hai vế còn tệ hơn thiếu cả hai: `hops=2` với header một entry sẽ trỏ ra ngoài mảng rồi rơi về địa chỉ socket, im lặng.
+- **`SITE_ADDRESS`** không khớp hostname khách truy cập → Caddy trả `200` **thân rỗng**, trang trắng, log toàn 200.
+- **`TRUSTED_PROXY_HOPS`** sai → địa chỉ proxy bị ghi vào bản ghi đồng ý thay cho địa chỉ khách, và giới hạn theo IP gộp mọi người vào một hạn mức.
+- **`TENANT_KEK`** mất → mọi field nhạy cảm và tệp đã mã hoá không đọc lại được, vĩnh viễn.
 
-**Sau tunnel, Caddy không xin được chứng chỉ công cộng.** Thử thách ACME đi tới Cloudflare chứ không tới origin, nên Caddy thất bại rồi ngừng phục vụ 443 — triệu chứng là `502` từ tunnel. Thêm `tls internal` vào khối site: tunnel đã lo TLS công cộng rồi, đoạn origin chỉ cần mã hoá chứ không cần chứng chỉ ai cũng tin.
-
-**`SITE_ADDRESS` phải đúng hostname khách thật sự truy cập.** Caddy khớp site theo Host; Host không khớp site nào thì nó trả **200 với thân rỗng** — không phải 404. Trang trắng, log toàn 200. Nếu các trang trống rỗng, kiểm chỗ này trước.
-
-Đừng suy luận, hãy đo: mở **Cài đặt tổ chức** từ máy của bạn và so dòng *"IP của bạn như hệ thống ghi nhận"* với IP thật. Khớp là đúng; ra địa chỉ proxy hay dải nội bộ là sai.
-
-> [!WARNING]
-> `make secrets` sinh ra `TENANT_KEK` trong `.env`. **Sao lưu khóa này ở nơi tách biệt với bản sao lưu cơ sở dữ liệu.** Mất nó là mất vĩnh viễn mọi trường nhạy cảm và mọi tệp đã mã hóa — không có đường khôi phục. Đó chính là thuộc tính khiến tính năng xóa triệt để hoạt động.
-
-### Cấu hình
-
-| Biến môi trường | Mặc định | Ý nghĩa |
-|---|---|---|
-| `BASE_URL` | `http://localhost:8080` | Origin của ứng dụng: trang biểu mẫu, cổng DSR, API quản trị |
-| `SHORT_URL_BASE` | `BASE_URL` | Origin của link rút gọn. Đặt riêng để chạy shortener trên tên miền của nó |
-| `DATABASE_URL` | — | Chuỗi kết nối PostgreSQL |
-| `REDIS_URL` | — | Chuỗi kết nối Redis |
-| `TENANT_KEK` | — | **Bắt buộc.** Khóa gốc mã hóa, 32 byte base64 |
-| `SETUP_TOKEN` | tự sinh | Mã cho endpoint tạo chủ sở hữu đầu tiên. Bỏ trống thì máy chủ tự sinh và in ra log |
-| `PUBLIC_WRITE_IP_LIMIT` | `60` | Lượt gửi/tải tệp mỗi phút cho mỗi dải /24. Nâng lên khi khách đi chung một NAT (hội chợ, văn phòng) |
-| `PUBLIC_WRITE_FORM_LIMIT` | `600` | Lượt gửi mỗi phút cho mỗi biểu mẫu |
-| `STORAGE_DRIVER` | `local` | `local` (đĩa) hoặc `s3`. **Mặc định là đĩa** — MinIO không chạy trừ khi bạn bật profile `s3` |
-| `STORAGE_S3_ENDPOINT` | — | `minio:9000`, `<acc>.r2.cloudflarestorage.com`, `s3.cloud.fpt.vn`, `s3.amazonaws.com` |
-| `STORAGE_S3_BUCKET` · `_ACCESS_KEY` · `_SECRET_KEY` | — | Bắt buộc khi `STORAGE_DRIVER=s3` |
-
-Tệp đính kèm được **mã hoá trước khi rời khỏi tiến trình**, bằng khoá riêng của từng chủ thể dữ liệu. Bucket chỉ chứa ciphertext — nhà cung cấp, một bucket policy đặt sai, hay một bản sao lưu bị chép đi đều chỉ thu được byte không ai đọc được. Đó cũng là lý do link tải **không** phải presigned URL của S3: trình duyệt nhận về sẽ là bản mã. Ứng dụng phục vụ byte, vì nó là chỗ giữ khoá, kiểm quyền và ghi nhật ký.
-
-Thử bằng MinIO tại chỗ trước khi trỏ ra cloud:
-
-```bash
-docker compose --profile s3 up -d minio
-STORAGE_DRIVER=s3 STORAGE_S3_ENDPOINT=http://minio:9000 \
-STORAGE_S3_BUCKET=collectr STORAGE_S3_ACCESS_KEY=... STORAGE_S3_SECRET_KEY=... \
-  docker compose up -d collectr worker
-```
-| `STORAGE_DRIVER` | `local` | `local` (đĩa) hoặc `s3`. **Mặc định là đĩa** — MinIO không chạy trừ khi bạn bật profile `s3` |
-| `STORAGE_LOCAL_PATH` | `/data/files` | Thư mục lưu tệp khi dùng `local` |
-| `STORAGE_S3_*` | — | Endpoint, bucket, khóa truy cập khi dùng `s3` |
-| `DSR_SLA_HOURS` | `72` | Hạn xử lý yêu cầu của chủ thể dữ liệu |
-| `DEFAULT_RETENTION_DAYS` | `730` | Thời hạn lưu mặc định |
-| `RAW_EVENT_RETENTION_DAYS` | `90` | Thời hạn lưu sự kiện thô |
-| `DEPLOYMENT_ROLE` | `controller` | `controller` (tự dùng) hoặc `processor` (chạy dịch vụ cho bên khác) |
-
-| `SMTP_HOST` `SMTP_FROM` | — | Bắt buộc để mời đồng nghiệp và để chủ thể dữ liệu nhận được liên kết truy cập |
-
-> [!WARNING]
-> Chưa cấu hình SMTP thì lời mời và liên kết truy cập được **ghi ra log thay vì gửi đi**. Dùng để thử được, **không dùng thật được** — người khác không đọc được log của bạn.
->
-> Thử tại chỗ: `docker compose --profile dev up -d mailpit`, đặt `SMTP_HOST=mailpit` `SMTP_PORT=1025` `SMTP_STARTTLS=false`, rồi đọc mail ở http://localhost:8025
-
-Danh sách đầy đủ: [`.env.example`](.env.example).
-
-### Chuyển sang object storage
-
-Khi dung lượng tệp vượt ~300 GB, hoặc khi chạy nhiều hơn một instance:
-
-```bash
-STORAGE_DRIVER=s3
-STORAGE_S3_ENDPOINT=http://minio:9000
-STORAGE_S3_BUCKET=collectr
-```
-```bash
-docker compose --profile s3 up -d      # kèm MinIO
-```
-
-Không cần sửa dòng code nào — cả hai driver dùng chung một giao diện `Storage`. Job chép dữ liệu từ `local` sang `s3` (kèm đối chiếu checksum) sẽ có ở v0.2.
+Kiểm cái thứ hai bằng mắt: mở **Cài đặt tổ chức** và so dòng *"IP của bạn như hệ thống ghi nhận"* với IP thật của bạn.
 
 ## Tài liệu
 
@@ -284,23 +220,24 @@ Lý do đầy đủ ở [docs/05-architecture.md](docs/05-architecture.md).
 
 ## Lộ trình
 
-- [x] Thiết kế hệ thống
-- [x] **v0.1** — Link + QR + redirect + thu thập sự kiện async *(đang hoàn thiện: quản lý workspace/user)*
-- [x] **v0.2** — Rule engine, versioning bất biến, validator lúc publish, bảng dữ liệu *(chưa có endpoint submit công khai — xem v0.3)*
-- [x] **v0.3** — Consent + endpoint submit, nhật ký bất biến, crypto-shredding *(cổng tự phục vụ chủ thể dữ liệu chuyển sang v0.4)*
-- [x] **v0.4** — Cổng chủ thể dữ liệu: tra cứu, sửa, yêu cầu xóa; retention sweeper; xử lý DSR tự động
-- [x] **v0.5** — Đăng nhập (argon2id + TOTP), session thu hồi được, phân giải quyền
-- [x] **v0.6** — SMTP, mời thành viên, quản lý thành viên
-- [x] **v0.7** — Đặt lại mật khẩu, đổi mật khẩu, mã dự phòng MFA
-- [x] **v0.8** — Upload tệp: kiểm magic bytes, mã hóa at-rest, link ký, dọn tệp bỏ rơi
-- [x] **v0.9** — Xuất Excel nhiều sheet, webhook có chữ ký, engine báo cáo
-- [x] **v0.10** — Load test, beacon phễu, hàng đợi DSR cho quản trị
-- [x] **v0.11** — `/metrics` Prometheus, rate limit endpoint công khai, CRUD dự án & biểu mẫu
-- [x] **v0.12** — Quản lý tên miền, tách tên miền rút gọn khỏi tên miền ứng dụng
-- [x] **v0.13** — Báo cáo cho link rút gọn: lượt bấm theo thời gian, nguồn, QR, xếp hạng
-- [x] **v0.15** — Giao diện hi-fi, phân quyền theo dự án, cưỡng chế MFA có ân hạn
+Đánh dấu theo thứ tự thật, và những gì **chưa** xong nêu thẳng chứ không giấu trong một dấu tick.
+
+- [x] **v0.1 – v0.9** — link/QR, rule engine + versioning bất biến, consent + submit công khai, cổng chủ thể dữ liệu, đăng nhập + TOTP, mời thành viên, upload tệp mã hoá, xuất Excel + webhook
+- [x] **v0.10 – v0.13** — load test, `/metrics`, rate limit, quản lý tên miền, báo cáo link, chuyển tiếp UTM
 - [x] **v0.14** — Chuyển tiếp UTM, phân tích chiến dịch, xuất báo cáo link ra Excel
-- [ ] **v1.0** — Ba endpoint còn thiếu (phễu, legal hold, so sánh version), API key, cứng hoá bảo mật, đo lại trên hạ tầng tách rời
+- [x] **v0.15** — Giao diện hi-fi, phân quyền theo dự án, cưỡng chế MFA có ân hạn
+- [x] **v0.16** — Ba endpoint còn thiếu, API key, danh sách tệp đính kèm
+- [x] **v0.17** — 7 định dạng câu trả lời kiểm cả hai đầu, giới hạn min/max, nối xong luồng tải tệp
+- [x] **v0.18** — Cổng chủ thể dữ liệu có giao diện thật; chủ thể xem được cả dữ liệu nhạy cảm của mình
+- [x] **v0.19** — Mã khởi tạo thay cho tài khoản mặc định; màn Cài đặt tổ chức; lưu trữ S3 (MinIO/R2/FPT/AWS)
+- [x] **v0.20** — Sửa chuỗi proxy: giữ IP khách sau Cloudflare/nginx/tunnel, và hiện IP quan sát được ra giao diện
+
+**v1.0 còn lại:**
+
+- [ ] Đo lại trên hạ tầng tách rời — client và server khác máy. Số hiện tại đo trên cùng một Docker VM nên là **sàn, không phải trần**, và chênh lệch redirect 2,23ms → 7,15ms giữa hai lần đo vẫn **chưa ai giải thích được**.
+- [ ] Tìm kiếm ở màn Dữ liệu. Hiện chỉ lọc theo ngày; khách gọi điện đọc số điện thoại thì người trực không tra được — mà đó cũng là thao tác đầu tiên khi có yêu cầu chủ thể dữ liệu.
+- [ ] Diễn tập khôi phục sao lưu, có bấm giờ.
+- [ ] Chốt chính sách vá lỗ hổng trước khi cắt release đầu tiên: `SECURITY.md` hiện chưa nói ai được báo, trong bao lâu, và bản nào còn được hỗ trợ.
 
 Ngoài phạm vi hiện tại: A/B testing, đồng bộ CRM, email marketing, biểu mẫu đa ngôn ngữ, sinh hồ sơ đánh giá tác động tự động.
 
