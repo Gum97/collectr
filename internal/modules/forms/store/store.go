@@ -70,6 +70,12 @@ type Submission struct {
 	VisibleFields []string
 	Status        string
 	SubmittedAt   time.Time
+	// SubjectID and SensitiveBlob are what the grid needs to show a sensitive
+	// answer. Answers holds only the plaintext column; a sensitive answer is
+	// sealed separately, which is why a grid built from Answers alone reported
+	// every one of them as unanswered.
+	SubjectID     *uuid.UUID
+	SensitiveBlob []byte
 }
 
 // CreateForm inserts a form with its initial draft.
@@ -354,7 +360,8 @@ func (s *Store) InsertSubmission(ctx context.Context, tx pgx.Tx, tenantID uuid.U
 func (s *Store) ListSubmissions(ctx context.Context, tenantID, formID uuid.UUID, before time.Time, limit int) ([]Submission, error) {
 	const q = `
 		SELECT s.id, s.form_id, s.form_version_id, v.version_no, s.answers,
-		       s.visible_fields, s.status, s.submitted_at
+		       s.visible_fields, s.status, s.submitted_at,
+		       s.data_subject_id, s.answers_enc
 		FROM forms.submissions s
 		JOIN forms.form_versions v ON v.id = s.form_version_id
 		WHERE s.form_id = $1 AND s.status <> 'erased' AND s.submitted_at < $2
@@ -371,7 +378,8 @@ func (s *Store) ListSubmissions(ctx context.Context, tenantID, formID uuid.UUID,
 		for rows.Next() {
 			var sub Submission
 			if err := rows.Scan(&sub.ID, &sub.FormID, &sub.FormVersionID, &sub.VersionNo,
-				&sub.Answers, &sub.VisibleFields, &sub.Status, &sub.SubmittedAt); err != nil {
+				&sub.Answers, &sub.VisibleFields, &sub.Status, &sub.SubmittedAt,
+				&sub.SubjectID, &sub.SensitiveBlob); err != nil {
 				return err
 			}
 			out = append(out, sub)

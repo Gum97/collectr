@@ -38,7 +38,14 @@ type Service struct {
 	defaultRetention time.Duration
 	docs             contracts.DocumentProvider
 	audit            contracts.AuditWriter
+	opener           contracts.SensitiveOpener
 }
+
+// SetSensitiveOpener attaches the decryptor for sealed answers.
+//
+// Without it the grid cannot show a sensitive answer at all, and says so rather
+// than reporting the question as unanswered.
+func (s *Service) SetSensitiveOpener(o contracts.SensitiveOpener) { s.opener = o }
 
 // NewService returns a Service.
 func NewService(repo Repository, defaultRetention time.Duration) *Service {
@@ -289,6 +296,27 @@ func (s *Service) Submissions(ctx context.Context, tenantID, formID uuid.UUID, b
 		return Grid{}, err
 	}
 
+	// Opened once for the page, and only when the caller asked to see them.
+	// Decrypting on every grid load would spend a key unwrap per row for values
+	// that are about to be replaced by dots, and would make an ordinary listing
+	// indistinguishable from a sensitive read in the metrics.
+	sensitive := map[uuid.UUID]map[string]any{}
+	if revealSensitive && s.opener != nil {
+		for _, sub := range subs {
+			if len(sub.SensitiveBlob) == 0 || sub.SubjectID == nil {
+				continue
+			}
+			opened, err := s.opener.OpenSensitive(ctx, tenantID, *sub.SubjectID, sub.ID, sub.SensitiveBlob)
+			if err != nil {
+				// One unreadable record must not blank the page. The cell falls
+				// back to the masked state, which is honest: the value exists and
+				// is not being shown.
+				continue
+			}
+			sensitive[sub.ID] = opened
+		}
+	}
+
 	grid := Grid{Columns: columns, Rows: make([]Row, 0, len(subs))}
 	for _, sub := range subs {
 		schema := schemaByID[sub.FormVersionID]
@@ -303,10 +331,20 @@ func (s *Service) Submissions(ctx context.Context, tenantID, formID uuid.UUID, b
 			if inSchema && col.TypeVariant != "" && field.Type != col.TypeVariant {
 				inSchema = false
 			}
-			state := domain.CellState(inSchema, sub.VisibleFields, sub.Answers, col.FieldID)
+			// A sensitive answer is not in sub.Answers -- it is sealed in
+			// answers_enc -- so the state has to be decided against the opened
+			// copy. Deciding it against the plaintext column reported every
+			// sensitive answer as CellBlank, and CellBlank is rendered as "the
+			// respondent left this empty": a statement about a person who did
+			// answer, and one an operator would act on.
+			answers := sub.Answers
+			if field.Sensitive && len(sensitive[sub.ID]) > 0 {
+				answers = sensitive[sub.ID]
+			}
+			state := domain.CellState(inSchema, sub.VisibleFields, answers, col.FieldID)
 			cell := Cell{State: state}
 			if state == domain.CellAnswered {
-				cell.Value = sub.Answers[string(col.FieldID)]
+				cell.Value = answers[string(col.FieldID)]
 				// Reading a record and reading the sensitive data inside it are
 				// separate permissions; the default is to mask.
 				if field.Sensitive && !revealSensitive {

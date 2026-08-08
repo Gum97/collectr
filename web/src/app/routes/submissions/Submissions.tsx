@@ -227,7 +227,7 @@ function Grid({
 
         {revealPrompt && (
           <RevealPrompt
-            columns={sensitive.map((c) => c.fieldId)}
+            columns={sensitive.map((c) => c.label)}
             onCancel={() => setRevealPrompt(false)}
             onConfirm={() => {
               setReveal(true)
@@ -335,7 +335,11 @@ function RevealPrompt({
     <div role="alert" className="mt-3 rounded border border-accent bg-accent/5 px-3 py-2">
       <p className="text-body font-semibold text-legal">Mở lớp che dữ liệu nhạy cảm</p>
       <p className="mt-1 text-meta">
-        Sẽ hiện rõ <span className="font-mono">{columns.join(', ')}</span> cho các bản ghi trên trang đang
+        {/* The question, not its id. Somebody deciding whether to open a
+            person's identity card should be reading the question they answered,
+            not fld_01KZ… -- and this dialog is the last point before the value
+            is on screen and the read is in the audit log. */}
+        Sẽ hiện rõ <span className="font-semibold">{columns.join(', ')}</span> cho các bản ghi trên trang đang
         xem. Đây là một lần đọc dữ liệu nhạy cảm và được ghi vào nhật ký audit.
       </p>
       <div className="mt-2 flex gap-2">

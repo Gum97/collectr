@@ -362,6 +362,10 @@ func run() error {
 	iamHandler.RegisterAPIKeys(admin)
 	iamHandler.RegisterRecoveryAdmin(admin)
 	formSvc.SetAudit(auditWriter)
+	// The grid masks sensitive answers by default and must be able to open them
+	// when an operator with submission.read_sensitive asks. Without this the
+	// column rendered as "left blank" for every respondent who did answer.
+	formSvc.SetSensitiveOpener(consentStore)
 	fileHandler.SetAudit(db, auditWriter)
 	fileHandler.RegisterAdmin(admin)
 	exportHandler.RegisterAdmin(admin)
