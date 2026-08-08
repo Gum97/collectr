@@ -163,6 +163,8 @@ Collectr đọc địa chỉ khách từ `X-Forwarded-For`, lùi lại `TRUSTED_
 
 Với bất cứ thứ gì đứng trước Caddy, `deploy/Caddyfile` phải có `trusted_proxies private_ranges` — nếu không Caddy **thay** header bằng địa chỉ nó thấy và IP khách mất trước khi tới app. Thiếu một trong hai vế còn tệ hơn thiếu cả hai: `hops=2` với header một entry sẽ trỏ ra ngoài mảng rồi rơi về địa chỉ socket, im lặng.
 
+**Sau tunnel, Caddy không xin được chứng chỉ công cộng.** Thử thách ACME đi tới Cloudflare chứ không tới origin, nên Caddy thất bại rồi ngừng phục vụ 443 — triệu chứng là `502` từ tunnel. Thêm `tls internal` vào khối site: tunnel đã lo TLS công cộng rồi, đoạn origin chỉ cần mã hoá chứ không cần chứng chỉ ai cũng tin.
+
 **`SITE_ADDRESS` phải đúng hostname khách thật sự truy cập.** Caddy khớp site theo Host; Host không khớp site nào thì nó trả **200 với thân rỗng** — không phải 404. Trang trắng, log toàn 200. Nếu các trang trống rỗng, kiểm chỗ này trước.
 
 Đừng suy luận, hãy đo: mở **Cài đặt tổ chức** từ máy của bạn và so dòng *"IP của bạn như hệ thống ghi nhận"* với IP thật. Khớp là đúng; ra địa chỉ proxy hay dải nội bộ là sai.

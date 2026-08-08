@@ -22,6 +22,13 @@
 	}
 }
 
+# Behind a tunnel, add `tls internal` to the site block.
+#
+# A public ACME challenge is answered at Cloudflare, not here, so Caddy cannot
+# obtain a certificate and stops serving 443 -- which the tunnel reports as 502.
+# The tunnel already provides public TLS; this hop only needs to be encrypted,
+# not publicly trusted, and cloudflared is told to accept it.
+#
 # SITE_ADDRESS must be the hostname visitors actually arrive with.
 #
 # Caddy matches sites by Host. A request whose Host matches no site here gets an
