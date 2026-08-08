@@ -1,6 +1,11 @@
 package store
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/google/uuid"
+)
 
 // A correction is written into the plaintext answers column wholesale, so what
 // it may contain decides what ends up there.
@@ -46,5 +51,38 @@ func TestCheckRectifiable(t *testing.T) {
 				t.Fatalf("expected the correction to be accepted, got %v", err)
 			}
 		})
+	}
+}
+
+// The label on a revision is what separates "the person fixed their own typo"
+// from "an employee changed somebody else's answers". Both are legitimate; only
+// one of them needs a request behind it, and a reader a year later has to be
+// able to tell which happened.
+func TestRectifierLabels(t *testing.T) {
+	t.Parallel()
+
+	subject := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	user := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+
+	s := SubjectRectifier(subject)
+	if s.Source != "dsr_self_service" {
+		t.Errorf("subject source = %q, want dsr_self_service", s.Source)
+	}
+	if !strings.HasPrefix(s.ChangedBy, "subject:") {
+		t.Errorf("subject changed_by = %q, want a subject: prefix", s.ChangedBy)
+	}
+
+	o := OperatorRectifier(user)
+	if o.Source != "dsr_operator" {
+		t.Errorf("operator source = %q, want dsr_operator", o.Source)
+	}
+	if !strings.HasPrefix(o.ChangedBy, "user:") {
+		t.Errorf("operator changed_by = %q, want a user: prefix", o.ChangedBy)
+	}
+
+	// The two must never collapse into one another: a trail that cannot
+	// distinguish them makes the defensible case unprovable.
+	if s.Source == o.Source || s.ChangedBy == o.ChangedBy {
+		t.Fatal("subject and operator rectifications are indistinguishable in the revision row")
 	}
 }

@@ -27,11 +27,18 @@ type AdminHandler struct {
 	db    *postgres.DB
 	store *store.Store
 	audit contracts.AuditWriter
+	// sla is the statutory answering window, needed when an operator raises a
+	// request on a subject's behalf. The deadline is stored on the request, so a
+	// later change to the configured SLA cannot move a clock already running.
+	sla time.Duration
 }
 
 // NewAdmin returns an AdminHandler.
-func NewAdmin(db *postgres.DB, s *store.Store, audit contracts.AuditWriter) *AdminHandler {
-	return &AdminHandler{db: db, store: s, audit: audit}
+func NewAdmin(db *postgres.DB, s *store.Store, audit contracts.AuditWriter, sla time.Duration) *AdminHandler {
+	if sla <= 0 {
+		sla = 72 * time.Hour
+	}
+	return &AdminHandler{db: db, store: s, audit: audit, sla: sla}
 }
 
 // RegisterAdmin mounts the routes.
@@ -141,6 +148,10 @@ func (h *AdminHandler) reject(w http.ResponseWriter, r *http.Request) {
 	h.resolve(w, r, domain.StatusRejected, "dsr.rejected")
 }
 
+// errRectifyNeedsCorrection is returned when somebody tries to close a
+// rectification request without supplying the corrected values.
+var errRectifyNeedsCorrection = errors.New("a rectification is closed by correcting the record")
+
 func (h *AdminHandler) resolve(w http.ResponseWriter, r *http.Request, status, action string) {
 	actor, ok := h.actor(w, r)
 	if !ok {
@@ -180,6 +191,16 @@ func (h *AdminHandler) resolve(w http.ResponseWriter, r *http.Request, status, a
 		// never "overdue" -- so the flag would record nothing at all.
 		wasLate = time.Now().After(resolved.DueAt)
 
+		// A rectification is closed by correcting the record, not by saying it
+		// was corrected. Fulfilling one from this endpoint would mark the
+		// statutory clock satisfied while the wrong value is still on file --
+		// the same paperwork-without-effect outcome the restriction branch below
+		// exists to avoid, and the more dangerous of the two, because the
+		// subject has been told their data was fixed.
+		if status == domain.StatusFulfilled && resolved.Type == domain.TypeRectify {
+			return errRectifyNeedsCorrection
+		}
+
 		if status == domain.StatusFulfilled && resolved.Type == domain.TypeRestrict {
 			if restricted, err = h.store.Restrict(r.Context(), tx, resolved.SubjectID); err != nil {
 				return err
@@ -206,6 +227,15 @@ func (h *AdminHandler) resolve(w http.ResponseWriter, r *http.Request, status, a
 		// Also the answer when somebody else resolved it first.
 		httpx.Error(w, r, http.StatusConflict, "already_resolved",
 			"Yêu cầu này không còn mở, hoặc không tồn tại")
+		return
+	case errors.Is(err, errRectifyNeedsCorrection):
+		httpx.ErrorWithFields(w, r, http.StatusUnprocessableEntity, "rectify_needs_correction",
+			"Yêu cầu chỉnh sửa phải đóng bằng cách sửa dữ liệu",
+			map[string]any{
+				"answers": "Dùng POST /api/v1/dsr/submissions/{subject_id}/rectify kèm giá trị " +
+					"đúng. Đóng yêu cầu mà không sửa gì là báo với chủ thể rằng dữ liệu đã được " +
+					"sửa trong khi giá trị sai vẫn còn nguyên.",
+			})
 		return
 	case err != nil:
 		httpx.Logger(r.Context()).Error("resolving dsr request", "error", err)

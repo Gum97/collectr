@@ -74,6 +74,10 @@ POST          /api/v1/forms/{id}/exports       # → job, xem doc 9
 GET           /api/v1/forms/{id}/files          # tệp đính kèm đã nhận
 POST          /api/v1/files/{id}/download-url   # → link ký 10 phút, ghi audit
 
+# Chỉnh sửa theo yêu cầu chủ thể
+POST          /api/v1/dsr/submissions/{subject_id}/rectify   # nhân viên sửa hộ, bắt buộc verification_method
+GET           /api/v1/dsr/verification-methods
+
 # Tổ chức
 GET|PATCH     /api/v1/org                      # tên + settings; kèm khối deployment CHỈ ĐỌC
 

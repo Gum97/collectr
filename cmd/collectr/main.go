@@ -255,7 +255,7 @@ func run() error {
 		Opener: consentStore,
 	})
 	dsrHandler := dsrapi.New(dsrSvc, sessionSigner, cfg.Env != "dev")
-	dsrAdminHandler := dsrapi.NewAdmin(db, dsrstore.New(db), auditWriter)
+	dsrAdminHandler := dsrapi.NewAdmin(db, dsrstore.New(db), auditWriter, cfg.DSRSLA)
 
 	exportSvc := exportsapp.NewService(exportsapp.Deps{
 		Store: exportsstore.New(db), Submissions: formStore,
@@ -370,6 +370,7 @@ func run() error {
 	consentHandler.RegisterAdmin(admin)
 	auditHandler.RegisterAdmin(admin)
 	dsrAdminHandler.RegisterAdmin(admin)
+	dsrAdminHandler.RegisterRectify(admin)
 	iamHandler.RegisterAdmin(admin)
 	iamHandler.RegisterOrg(admin)
 	iamHandler.RegisterMembers(admin)

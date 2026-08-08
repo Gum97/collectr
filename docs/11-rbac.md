@@ -57,6 +57,12 @@ audit.read
 apikey.manage  webhook.manage
 ```
 
+`dsr.handle` cho phép nhân viên **sửa dữ liệu hộ chủ thể** — nhưng chỉ trong lúc
+đáp ứng một yêu cầu chỉnh sửa đã ghi nhận, kèm cách xác minh người gọi. Không có
+đường nào để nhân viên mở một bản ghi rồi sửa tuỳ ý; yêu cầu chính là cơ sở pháp
+lý và cũng là dấu vết. Ô nhạy cảm vẫn nằm ngoài tầm: chúng niêm phong bằng khoá
+của chủ thể và đường này không niêm phong lại được.
+
 `member.manage` cũng là quyền canh màn **Cài đặt tổ chức** (`/api/v1/org`). Nó
 cho đổi tên tổ chức và các thiết lập của tổ chức — **không** cho đụng tới cấu
 hình triển khai. Điểm cuối lưu trữ, khoá bí mật, giới hạn và thời hạn thuộc về

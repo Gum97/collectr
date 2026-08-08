@@ -224,7 +224,8 @@ func (s *Service) Rectify(ctx context.Context, sess Session, submissionID uuid.U
 	if !sess.CanSee(submissionID) {
 		return domain.ErrForbidden
 	}
-	if err := s.store.RectifySubmission(ctx, sess.TenantID, sess.SubjectID, submissionID, answers); err != nil {
+	if err := s.store.RectifySubmission(ctx, sess.TenantID, sess.SubjectID, submissionID, answers,
+		store.SubjectRectifier(sess.SubjectID)); err != nil {
 		return err
 	}
 

@@ -365,58 +365,88 @@ func checkRectifiable(schema versionSchema, answers map[string]any) error {
 	return nil
 }
 
-func (s *Store) RectifySubmission(ctx context.Context, tenantID, subjectID, submissionID uuid.UUID, answers map[string]any) error {
+// Rectifier identifies who is correcting a record, and on what footing.
+//
+// Both paths write the same revision row; only the label differs. That label is
+// the whole difference between "the person fixed their own typo" and "an
+// employee edited somebody else's answers", and a reader of the trail has to be
+// able to tell them apart a year later.
+type Rectifier struct {
+	// ChangedBy is "subject:<id>" or "user:<id>".
+	ChangedBy string
+	// Source is dsr_self_service or dsr_operator.
+	Source string
+}
+
+// SubjectRectifier is the data subject correcting their own record.
+func SubjectRectifier(subjectID uuid.UUID) Rectifier {
+	return Rectifier{ChangedBy: "subject:" + subjectID.String(), Source: "dsr_self_service"}
+}
+
+// OperatorRectifier is an employee correcting a record on the subject's behalf,
+// while fulfilling a recorded rectification request.
+func OperatorRectifier(userID uuid.UUID) Rectifier {
+	return Rectifier{ChangedBy: "user:" + userID.String(), Source: "dsr_operator"}
+}
+
+// RectifySubmission corrects one submission in its own transaction.
+func (s *Store) RectifySubmission(ctx context.Context, tenantID, subjectID, submissionID uuid.UUID, answers map[string]any, by Rectifier) error {
 	return s.db.InTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
-		var before map[string]any
-		var schema versionSchema
-		err := tx.QueryRow(ctx,
-			`SELECT s.answers, v.schema
-			 FROM forms.submissions s
-			 JOIN forms.form_versions v ON v.id = s.form_version_id
-			 WHERE s.id = $1 AND s.data_subject_id = $2 AND s.status = 'active'
-			 FOR UPDATE OF s`, submissionID, subjectID).Scan(&before, &schema)
-		if postgres.IsNoRows(err) {
-			// Ownership is checked in the query itself. A separate lookup would
-			// invite the classic mistake of trusting an id from the request.
-			return domain.ErrForbidden
-		}
-		if err != nil {
-			return fmt.Errorf("loading submission for rectification: %w", err)
-		}
-
-		// The answers map is written to the plaintext column wholesale, so what
-		// it may contain has to be checked before it lands there.
-		//
-		// A sensitive answer does not live in that column: it is sealed in
-		// answers_enc under the subject's own key, and that key is what erasure
-		// destroys. Writing one here would put a readable copy beside the
-		// ciphertext, and crypto-shredding would go on reporting success while
-		// the value survived it in clear. The portal shows sensitive answers and
-		// deliberately does not offer to edit them; correcting one means
-		// re-sealing, which is a write path that does not exist yet.
-		//
-		// Unknown ids are refused for a plainer reason: they are not answers to
-		// anything. They reach the grid and the export as columns nobody asked
-		// for, and a caller inventing them is not a caller correcting a record.
-		if err := checkRectifiable(schema, answers); err != nil {
-			return err
-		}
-
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO forms.submission_revisions
-				(id, tenant_id, submission_id, answers_before, changed_by, change_source)
-			VALUES ($1, $2, $3, $4, $5, 'dsr_self_service')`,
-			uuid.New(), tenantID, submissionID, before, "subject:"+subjectID.String(),
-		); err != nil {
-			return fmt.Errorf("recording revision: %w", err)
-		}
-		if _, err := tx.Exec(ctx,
-			`UPDATE forms.submissions SET answers = $2 WHERE id = $1`, submissionID, answers,
-		); err != nil {
-			return fmt.Errorf("updating answers: %w", err)
-		}
-		return nil
+		return s.RectifyTx(ctx, tx, tenantID, subjectID, submissionID, answers, by)
 	})
+}
+
+// RectifyTx corrects one submission inside the caller's transaction.
+//
+// Separate from RectifySubmission so an operator can apply the correction and
+// close the request that authorised it in one transaction: a correction that
+// commits without its request, or a request closed without its correction,
+// would each be a record that lies about what happened.
+func (s *Store) RectifyTx(ctx context.Context, tx pgx.Tx, tenantID, subjectID, submissionID uuid.UUID, answers map[string]any, by Rectifier) error {
+	var before map[string]any
+	var schema versionSchema
+	err := tx.QueryRow(ctx,
+		`SELECT s.answers, v.schema
+		 FROM forms.submissions s
+		 JOIN forms.form_versions v ON v.id = s.form_version_id
+		 WHERE s.id = $1 AND s.data_subject_id = $2 AND s.status = 'active'
+		 FOR UPDATE OF s`, submissionID, subjectID).Scan(&before, &schema)
+	if postgres.IsNoRows(err) {
+		// Ownership is checked in the query itself. A separate lookup would
+		// invite the classic mistake of trusting an id from the request.
+		return domain.ErrForbidden
+	}
+	if err != nil {
+		return fmt.Errorf("loading submission for rectification: %w", err)
+	}
+
+	// A sensitive answer does not live in the plaintext column: it is sealed in
+	// answers_enc under the subject's own key, and that key is what erasure
+	// destroys. Writing one here would put a readable copy beside the ciphertext
+	// and crypto-shredding would go on reporting success while the value
+	// survived it in clear. That holds for an operator too -- being staff does
+	// not make the plaintext column a safe place to put it.
+	//
+	// Unknown ids are refused for a plainer reason: they are not answers to
+	// anything, and a caller inventing them is not a caller correcting a record.
+	if err := checkRectifiable(schema, answers); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO forms.submission_revisions
+			(id, tenant_id, submission_id, answers_before, changed_by, change_source)
+		VALUES ($1, $2, $3, $4, $5, $6)`,
+		uuid.New(), tenantID, submissionID, before, by.ChangedBy, by.Source,
+	); err != nil {
+		return fmt.Errorf("recording revision: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE forms.submissions SET answers = $2 WHERE id = $1`, submissionID, answers,
+	); err != nil {
+		return fmt.Errorf("updating answers: %w", err)
+	}
+	return nil
 }
 
 // PurgeExpiredSubmissions deletes submissions past their retention date.
