@@ -32,6 +32,12 @@
   --accent: #3d5a3c;
   --accent-dark: #2c4230;
   --ok: #2c6e49;
+  /* Earth red, and it appears only where there is a legal consequence: an
+     erasure that destroys a key, a deadline with a penalty behind it. A product
+     whose red means both "delete this draft" and "you are past a statutory
+     deadline" has taught its readers to ignore red. */
+  --legal: #a8432a;
+  --legal-wash: #fbf3f0;
   /* No webfonts. The brand faces are 52 KB per weight once the Vietnamese and
      latin subsets both load, which on this page would outweigh the form module
      fifteen times over. Every system stack below covers Vietnamese fully. */
@@ -162,7 +168,15 @@ a:hover { color: var(--accent-dark); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn-primary { background: var(--ink); color: #fff; }
 .btn-ghost { border-style: dashed; border-color: var(--faint); }
-.btn-danger { border-color: var(--accent); color: var(--accent); }
+/* Destroying the key is not an ordinary action and must not look like one.
+   This used to inherit --accent, so "Yêu cầu xoá toàn bộ" was the same forest
+   green as "Tải toàn bộ dữ liệu về" -- one emails you a file, the other makes
+   your data unreadable forever, and they were the same button. */
+.btn-danger {
+  border-color: var(--legal);
+  color: var(--legal);
+  background: var(--legal-wash);
+}
 .btn-sm { width: auto; padding: 6px 12px; font-size: 14px; }
 
 /* ---------- the form module (classes owned by web/src/public/form.ts) ----------
@@ -209,7 +223,7 @@ textarea.cf-input { min-height: 6rem; resize: vertical; }
    consequence, but nothing here carries one. */
 .cf-error {
   margin: 6px 0 0;
-  color: var(--legal, #a8432a);
+  color: var(--legal);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -345,7 +359,7 @@ textarea.cf-input { min-height: 6rem; resize: vertical; }
 .p-right:first-child { border-top: 0; padding-top: 0; }
 .p-right h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
 .p-right p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
-.p-right-danger h3 { color: var(--accent); }
+.p-right-danger h3 { color: var(--legal); }
 
 /* ---------- dead link ---------- */
 
