@@ -266,10 +266,13 @@ func (s *Store) UserEmail(ctx context.Context, tenantID, userID uuid.UUID) (stri
 // Profile is who the signed-in person is, for the parts of the interface that
 // name them.
 type Profile struct {
-	Email        string
-	Name         string
-	OrgRole      string
-	MFAEnabled   bool
+	Email      string
+	Name       string
+	OrgRole    string
+	MFAEnabled bool
+	// CreatedAt anchors the window a privileged account has before it must
+	// enrol a second factor.
+	CreatedAt    time.Time
 	OrgName      string
 	RecoveryLeft int
 }
@@ -277,7 +280,7 @@ type Profile struct {
 // UserProfile reads the signed-in user's identity and organisation role.
 func (s *Store) UserProfile(ctx context.Context, tenantID, userID uuid.UUID) (Profile, error) {
 	const q = `
-		SELECT u.email, u.name, m.role, u.mfa_enabled, t.name,
+		SELECT u.email, u.name, m.role, u.mfa_enabled, u.created_at, t.name,
 		       (SELECT count(*) FROM iam.mfa_recovery_codes c
 		         WHERE c.user_id = u.id AND c.used_at IS NULL)
 		FROM iam.users u
@@ -288,7 +291,7 @@ func (s *Store) UserProfile(ctx context.Context, tenantID, userID uuid.UUID) (Pr
 	var p Profile
 	err := s.db.InTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, q, tenantID, userID).
-			Scan(&p.Email, &p.Name, &p.OrgRole, &p.MFAEnabled, &p.OrgName, &p.RecoveryLeft)
+			Scan(&p.Email, &p.Name, &p.OrgRole, &p.MFAEnabled, &p.CreatedAt, &p.OrgName, &p.RecoveryLeft)
 	})
 	if postgres.IsNoRows(err) {
 		return Profile{}, domain.ErrNotFound

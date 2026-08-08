@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/collectr/collectr/internal/contracts"
 	"github.com/collectr/collectr/internal/modules/iam/app"
@@ -22,15 +23,16 @@ const sessionCookie = "collectr_session"
 
 // Handler serves the authentication routes.
 type Handler struct {
-	svc    *app.Service
-	db     *postgres.DB
-	audit  contracts.AuditWriter
-	secure bool
+	mfaGrace time.Duration
+	svc      *app.Service
+	db       *postgres.DB
+	audit    contracts.AuditWriter
+	secure   bool
 }
 
 // New returns a Handler.
-func New(svc *app.Service, db *postgres.DB, audit contracts.AuditWriter, secure bool) *Handler {
-	return &Handler{svc: svc, db: db, audit: audit, secure: secure}
+func New(svc *app.Service, db *postgres.DB, audit contracts.AuditWriter, secure bool, mfaGrace time.Duration) *Handler {
+	return &Handler{svc: svc, db: db, audit: audit, secure: secure, mfaGrace: mfaGrace}
 }
 
 // RegisterPublic mounts the unauthenticated routes.
@@ -227,6 +229,12 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		// enrol". Without the distinction every screen just says access denied,
 		// which is true and useless.
 		out["mfa_required"] = domain.RequiresMFA(profile.OrgRole)
+		// When the window closes. The interface counts down rather than locking
+		// the door on day one; after this moment the resolver strips the
+		// capabilities and the countdown becomes a gate.
+		if domain.RequiresMFA(profile.OrgRole) && !profile.MFAEnabled {
+			out["mfa_grace_ends_at"] = profile.CreatedAt.Add(h.mfaGrace)
+		}
 		out["recovery_codes_left"] = profile.RecoveryLeft
 	}
 

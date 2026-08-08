@@ -28,6 +28,8 @@ type Config struct {
 
 	// TrustedProxyHops is how many reverse proxies sit in front of the process.
 	TrustedProxyHops int
+	// MFAGrace is how long a role that requires MFA may run without it.
+	MFAGrace time.Duration
 
 	DatabaseURL string
 	RedisURL    string
@@ -140,6 +142,16 @@ func Load() (Config, error) {
 	// compose file; zero is correct when the binary is exposed directly, and
 	// anything else means the operator knows their own topology.
 	cfg.TrustedProxyHops = envInt("TRUSTED_PROXY_HOPS", 1, &errs)
+
+	// How long a privileged account may work before it must enrol a second
+	// factor. Zero enforces immediately.
+	//
+	// Not zero by default: on a fresh self-hosted install the first thing the
+	// owner does is look around, and a product that answers "you may not" to
+	// every screen before showing anything gets uninstalled rather than
+	// secured. Three days is long enough to set up an authenticator without
+	// being long enough to forget.
+	cfg.MFAGrace = time.Duration(envInt("MFA_GRACE_HOURS", 72, &errs)) * time.Hour
 
 	if cfg.ShortURLBase == "" {
 		cfg.ShortURLBase = cfg.BaseURL

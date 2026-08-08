@@ -40,6 +40,9 @@ type User struct {
 	MFASecret    []byte
 	MFAEnabled   bool
 	Status       string
+	// CreatedAt anchors the window a privileged account has before it must
+	// enrol a second factor.
+	CreatedAt time.Time
 }
 
 // Membership is what a user holds inside one organisation.
@@ -100,12 +103,12 @@ func (s *Store) HasAnyUser(ctx context.Context) (bool, error) {
 // way, or the login form becomes a way to test which addresses have accounts.
 func (s *Store) FindUserByEmail(ctx context.Context, email string) (User, bool, error) {
 	const q = `
-		SELECT id, email, name, coalesce(password_hash, ''), mfa_secret_enc, mfa_enabled, status
+		SELECT id, email, name, coalesce(password_hash, ''), mfa_secret_enc, mfa_enabled, status, created_at
 		FROM iam.users WHERE email = $1`
 
 	var u User
 	err := s.db.QueryRow(ctx, q, email).Scan(
-		&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.MFASecret, &u.MFAEnabled, &u.Status)
+		&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.MFASecret, &u.MFAEnabled, &u.Status, &u.CreatedAt)
 	if postgres.IsNoRows(err) {
 		return User{}, false, nil
 	}
@@ -118,12 +121,12 @@ func (s *Store) FindUserByEmail(ctx context.Context, email string) (User, bool, 
 // FindUserByID loads an account by id.
 func (s *Store) FindUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	const q = `
-		SELECT id, email, name, coalesce(password_hash, ''), mfa_secret_enc, mfa_enabled, status
+		SELECT id, email, name, coalesce(password_hash, ''), mfa_secret_enc, mfa_enabled, status, created_at
 		FROM iam.users WHERE id = $1`
 
 	var u User
 	err := s.db.QueryRow(ctx, q, id).Scan(
-		&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.MFASecret, &u.MFAEnabled, &u.Status)
+		&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.MFASecret, &u.MFAEnabled, &u.Status, &u.CreatedAt)
 	if postgres.IsNoRows(err) {
 		return User{}, domain.ErrNotFound
 	}
@@ -254,7 +257,7 @@ func (s *Store) CreateSession(ctx context.Context, userID, tenantID uuid.UUID, r
 func (s *Store) ResolveSession(ctx context.Context, raw string) (Session, User, error) {
 	const q = `
 		SELECT s.id, s.user_id, s.tenant_id, s.expires_at,
-		       u.email, u.name, u.status
+		       u.email, u.name, u.status, u.mfa_enabled, u.created_at
 		FROM iam.sessions s
 		JOIN iam.users u ON u.id = s.user_id
 		WHERE s.token_hash = $1
@@ -267,7 +270,7 @@ func (s *Store) ResolveSession(ctx context.Context, raw string) (Session, User, 
 	)
 	err := s.db.QueryRow(ctx, q, Hash(raw)).Scan(
 		&sess.ID, &sess.UserID, &sess.TenantID, &sess.ExpiresAt,
-		&u.Email, &u.Name, &u.Status)
+		&u.Email, &u.Name, &u.Status, &u.MFAEnabled, &u.CreatedAt)
 	if postgres.IsNoRows(err) {
 		return Session{}, User{}, domain.ErrSessionInvalid
 	}

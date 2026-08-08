@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useParams } from 'react-router'
-import { useMe } from '../lib/session'
+import { mfaGraceHoursLeft, useMe } from '../lib/session'
 import { retentionLabel, useProjects, type Project } from '../lib/projects'
 
 /**
@@ -57,6 +57,7 @@ export function Shell() {
       </nav>
 
       <main className="min-w-0 flex-1">
+        <MFAReminder hoursLeft={mfaGraceHoursLeft(me.data)} />
         <Outlet />
       </main>
     </div>
@@ -134,5 +135,36 @@ function OrgLink({ to, children }: { to: string; children: React.ReactNode }) {
     >
       {children}
     </NavLink>
+  )
+}
+
+/**
+ * Shown while a privileged account still works without a second factor.
+ *
+ * A reminder, not a wall: on a fresh install the person is looking around, and
+ * refusing every screen before showing anything is how a product gets
+ * uninstalled rather than secured. When the window closes the server stops
+ * granting capabilities and this becomes a gate instead.
+ */
+function MFAReminder({ hoursLeft }: { hoursLeft: number | null }) {
+  if (hoursLeft === null) return null
+  const urgent = hoursLeft <= 24
+  return (
+    <div
+      className={`flex flex-wrap items-center justify-between gap-3 border-b px-6 py-2.5 text-body ${
+        urgent ? 'border-legal-line bg-legal-wash text-legal' : 'border-line bg-chrome text-muted'
+      }`}
+    >
+      <span>
+        Vai trò của bạn bắt buộc xác thực hai lớp.{' '}
+        <strong className="font-medium">
+          {hoursLeft > 0 ? `Còn ${hoursLeft} giờ` : 'Đã hết hạn'}
+        </strong>{' '}
+        trước khi tài khoản mất quyền truy cập.
+      </span>
+      <NavLink to="/account/mfa" className="btn-primary shrink-0">
+        Bật ngay
+      </NavLink>
+    </div>
   )
 }
