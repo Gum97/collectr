@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l ./cmd ./internal)
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt-clean:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # Module boundaries are enforced here rather than by review. Boundaries
+      # that live only in a document erode within weeks.
+      - name: module boundaries
+        run: go test ./internal/arch/...
+
+      - name: test
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: coverage summary
+        run: go tool cover -func=coverage.out | tail -1
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # Most breaches are known CVEs left unpatched, not zero-days. This job
+      # failing is a release blocker, not a warning.
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # SQL only reveals its errors when a database executes it. This job brings
+      # the real stack up and checks the schema actually lands -- the class of
+      # bug that unit tests structurally cannot catch.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: bring up the stack
+        run: |
+          cp .env.example .env
+          sed -i "s|^TENANT_KEK=.*|TENANT_KEK=$(openssl rand -base64 32)|" .env
+          sed -i "s|^VISIT_PEPPER=.*|VISIT_PEPPER=$(openssl rand -base64 32)|" .env
+          sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=$(openssl rand -hex 24)|" .env
+          sed -i "s|^APP_DB_PASSWORD=.*|APP_DB_PASSWORD=$(openssl rand -hex 24)|" .env
+          sed -i "s|^BASE_URL=.*|BASE_URL=http://localhost|" .env
+          docker compose up -d --build --wait
+
+      - name: schema applied
+        run: |
+          docker compose exec -T postgres psql -U collectr -d collectr -c \
+            "SELECT version FROM core.schema_migrations;"
+
+      - name: row-level security is actually enforced
+        run: |
+          set -e
+          APP_PW=$(grep '^APP_DB_PASSWORD=' .env | cut -d= -f2)
+          # A tenant-less connection must see nothing. Fail-closed, not fail-open.
+          rows=$(docker compose exec -T -e PGPASSWORD="$APP_PW" postgres \
+            psql -U collectr_app -d collectr -tAc "SELECT count(*) FROM links.links;")
+          test "$rows" = "0" || { echo "RLS not enforced: saw $rows rows"; exit 1; }
+          # The application must not be able to rewrite its own audit trail.
+          if docker compose exec -T -e PGPASSWORD="$APP_PW" postgres \
+              psql -U collectr_app -d collectr -c "DELETE FROM audit.entries;" 2>/dev/null; then
+            echo "audit trail is deletable by the application role"; exit 1
+          fi
+
+      - name: database-backed tests
+        run: |
+          DB_PASSWORD=$(grep '^DB_PASSWORD=' .env | cut -d= -f2)
+          COLLECTR_TEST_DATABASE_URL="postgres://collectr:${DB_PASSWORD}@localhost:5432/collectr?sslmode=disable" \
+            go test -count=1 ./internal/modules/audit/...
+
+      - name: dump logs on failure
+        if: failure()
+        run: docker compose logs --no-color

@@ -1,0 +1,6 @@
+# Build output. Only the placeholder below is committed, so `go build` works in a
+# fresh clone without Node -- otherwise the go:embed directive has nothing to
+# match and the whole module fails to compile.
+*
+!.gitignore
+!index.html
