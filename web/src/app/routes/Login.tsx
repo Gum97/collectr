@@ -107,7 +107,12 @@ export function Login() {
               // numeric so the keyboard is the right one on mobile.
               inputMode="numeric"
               autoComplete="one-time-code"
-              pattern="[0-9]{6}|[a-z0-9-]{8,}"
+              // The hyphen is escaped because the browser compiles `pattern`
+              // with the RegExp `v` flag, where a bare `-` in a character class
+              // is a syntax error. An invalid pattern does not fail loudly: the
+              // attribute is discarded and the field then validates nothing at
+              // all, which is why this read as working.
+              pattern="[0-9]{6}|[a-z0-9\-]{8,}"
               required
               autoFocus
               value={code}
