@@ -1,0 +1,53 @@
+{{define "main"}}
+<header class="pg-head">
+  <h1 class="pg-title">{{.PageTitle}}</h1>
+  <p class="meta">Bạn đang vào bằng liên kết gửi tới email hoặc số điện thoại của bạn. Phiên này kéo dài {{.SessionMinutes}} phút rồi tự đóng.</p>
+</header>
+
+<!-- The module owns this container entirely. The server cannot fill it: the
+     portal session cookie is issued with Path=/api/dsr, so it is not sent to
+     this page at all -- which is also why a forwarded copy of this URL shows
+     the reader nothing. -->
+<div id="collectr-portal" class="p-slot" data-session-minutes="{{.SessionMinutes}}">
+  <div class="nojs" role="status">
+    <p class="strong">Cần bật JavaScript để xem dữ liệu của bạn.</p>
+    <p>Bản ghi và lựa chọn đồng ý của bạn chỉ được tải sau khi trình duyệt xác thực liên kết, nên trang này cần JavaScript. Bật JavaScript rồi mở lại liên kết trong email là xem được.</p>
+    {{- with .Support}}
+    <p>Nếu vẫn không mở được, viết thư cho {{.}} — bạn vẫn có đủ các quyền dưới đây, và chúng tôi vẫn phải trả lời trong {{$.ResponseDays}} ngày.</p>
+    {{- end}}
+  </div>
+</div>
+
+<section class="card">
+  <p class="label">Các quyền của bạn</p>
+  <ul class="p-rights">
+    <li class="p-right">
+      <h3>Xem dữ liệu của bạn</h3>
+      <p>Bạn thấy đúng những gì đang được lưu, gồm cả câu trả lời trong từng biểu mẫu bạn đã gửi và thời điểm gửi.</p>
+    </li>
+    <li class="p-right">
+      <h3>Sửa thông tin sai</h3>
+      <p>Giá trị mới thay thế giá trị cũ ngay. Bản cũ vẫn nằm trong nhật ký để chứng minh đã sửa gì và sửa khi nào, nhưng không còn được dùng để xử lý nữa.</p>
+    </li>
+    <li class="p-right">
+      <h3>Tải toàn bộ dữ liệu về</h3>
+      <p>Chúng tôi gửi bạn một tệp máy đọc được chứa toàn bộ dữ liệu về bạn, chậm nhất trong {{.ResponseDays}} ngày. Bản tải về nằm trong tay bạn: sau này nếu bạn yêu cầu xóa, bản đó vẫn còn ở máy bạn.</p>
+    </li>
+    <li class="p-right">
+      <h3>Hạn chế xử lý</h3>
+      <p>Dữ liệu vẫn được giữ nhưng ngừng được sử dụng cho tới khi có kết luận. Dùng khi bạn đang khiếu nại về tính chính xác hoặc về cơ sở pháp lý. Yêu cầu này cần người xét, không tự động.</p>
+    </li>
+    <li class="p-right">
+      <h3>Rút đồng ý</h3>
+      <p>Việc xử lý theo mục đích đó dừng kể từ lúc bạn rút. Rút đồng ý không làm cho việc xử lý trước đó thành trái luật, và không tự động xóa dữ liệu đã thu — muốn xóa thì dùng quyền dưới đây. Những mục đích mà chúng tôi bắt buộc phải thực hiện theo hợp đồng hoặc theo luật thì không rút bằng nút này được.</p>
+    </li>
+    <li class="p-right p-right-danger">
+      <h3>Yêu cầu xóa toàn bộ — không đảo ngược được</h3>
+      <p>Khi yêu cầu xóa được thực hiện, khóa mã hóa riêng của bạn bị hủy. Từ lúc đó không ai đọc được dữ liệu của bạn nữa, kể cả chúng tôi, kể cả từ các bản sao lưu cũ. Không có thao tác hoàn tác và không có cách khôi phục. Hãy tải dữ liệu của bạn về trước nếu bạn còn cần.</p>
+    </li>
+  </ul>
+  <p class="note">Mọi yêu cầu đều được trả lời chậm nhất trong {{.ResponseDays}} ngày kể từ khi gửi. Bạn sẽ thấy hạn trả lời ngay sau khi gửi yêu cầu.</p>
+</section>
+
+<p class="foot">Không font, không script của bên thứ ba{{with .Brand}} · dữ liệu ở lại hạ tầng {{.}}{{end}}</p>
+{{end}}

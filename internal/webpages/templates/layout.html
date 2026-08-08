@@ -1,0 +1,28 @@
+{{define "layout" -}}
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<!-- A form URL can identify the campaign, and for some forms that is itself
+     personal data. Nothing about this page travels to the next site. -->
+<meta name="referrer" content="no-referrer">
+<!-- Never indexed. These pages are addressed to one person who was given the
+     link, not to the open web. -->
+<meta name="robots" content="noindex, nofollow">
+<title>{{.PageTitle}}</title>
+<!-- The stylesheet is inlined, not linked: one round trip instead of two on a
+     phone connection, and no dependency on a build having run. -->
+<style>{{.Style}}</style>
+</head>
+<body>
+<main class="pg">
+{{- template "main" . }}
+</main>
+{{- with .Script}}
+<script type="module" src="{{.}}"></script>
+{{- end}}
+</body>
+</html>
+{{- end}}

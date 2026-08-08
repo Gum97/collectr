@@ -1,0 +1,57 @@
+{{define "main"}}
+<header class="pg-head">
+  <h1 class="pg-title">{{.Form.Title}}</h1>
+  {{- with .Form.Description}}
+  <p class="pg-sub">{{.}}</p>
+  {{- end}}
+</header>
+
+{{- if or .Form.Controller.Name .Form.SensitiveNotice}}
+<section class="card">
+  {{- with .Form.Controller}}
+  {{- if .Name}}
+  <p class="label">Bên kiểm soát dữ liệu</p>
+  <p class="strong">{{.Name}}{{with .TaxCode}} · MST {{.}}{{end}}</p>
+  {{- with .Contact}}
+  <p class="meta">{{.}}</p>
+  {{- end}}
+  <p class="note">Bạn có quyền xem, sửa, rút đồng ý và yêu cầu xóa dữ liệu của mình bất cứ lúc nào.</p>
+  {{- end}}
+  {{- end}}
+  {{- with .Form.SensitiveNotice}}
+  <p class="warn">Biểu mẫu này thu thập dữ liệu cá nhân nhạy cảm: {{.}}.</p>
+  {{- end}}
+</section>
+{{- end}}
+
+<!-- Everything inside #collectr-form is a fallback. web/src/public/form.ts
+     empties this container before it renders, so the static consent block below
+     is what a browser without the module shows, and nothing is ever on screen
+     twice. -->
+<div id="collectr-form" data-public-id="{{.Form.PublicID}}">
+  <div class="nojs" role="status">
+    <p class="strong">Cần bật JavaScript để điền biểu mẫu này.</p>
+    <p>Trình duyệt của bạn đang tắt JavaScript, hoặc trang chưa tải xong. Bật JavaScript rồi tải lại trang là điền được. Dưới đây là những điều biểu mẫu sẽ hỏi bạn đồng ý.</p>
+  </div>
+
+  {{- if or .Form.Consent.Purposes .Form.Consent.URL}}
+  {{- with .Form.Consent}}
+  <fieldset class="cf-consent">
+    <legend>Đồng ý xử lý dữ liệu</legend>
+    {{- range .Purposes}}
+    <label class="cf-option">
+      <input type="checkbox" disabled>
+      <span>{{.Label}}{{if .Required}} <span class="cf-req">*</span> (bắt buộc){{else}} (tùy chọn){{end}}</span>
+    </label>
+    {{- if or .Description .Retention}}
+    <p class="cf-help">{{.Description}}{{if and .Description .Retention}} · {{end}}{{.Retention}}</p>
+    {{- end}}
+    {{- end}}
+    <a class="cf-doc" href="{{.URL}}" target="_blank" rel="noopener">Xem toàn văn <u>văn bản đồng ý</u> · bản đang hiển thị v{{.Version}}{{if not .PublishedAt.IsZero}} ngày {{vndate .PublishedAt}}{{end}}{{with .Hash}} · sha256 {{short .}}{{end}}</a>
+  </fieldset>
+  {{- end}}
+  {{- end}}
+</div>
+
+<p class="foot">Không font, không script của bên thứ ba{{with .Brand}} · dữ liệu ở lại hạ tầng {{.}}{{end}}</p>
+{{end}}

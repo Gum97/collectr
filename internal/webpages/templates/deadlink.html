@@ -1,0 +1,11 @@
+{{define "main"}}
+<div class="dead">
+  <p class="dead-code">{{.Code}}</p>
+  <div class="dead-mark {{.MarkClass}}" aria-hidden="true"></div>
+  <h1 class="{{.TitleClass}}">{{.Title}}</h1>
+  <p>{{.Body}}</p>
+  {{- if .Retry}}
+  <p class="note no-print">Nếu bạn nhận liên kết này từ một người hoặc một tổ chức, hãy hỏi lại họ liên kết mới.</p>
+  {{- end}}
+</div>
+{{end}}
