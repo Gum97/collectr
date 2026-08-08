@@ -330,11 +330,11 @@ func run() error {
 	fileHandler.SetLister(filesstore.New(db))
 	throttled := limiter.Chain(
 		ratelimit.Rule{
-			Name: "public_write_ip", Limit: 60, Window: time.Minute,
+			Name: "public_write_ip", Limit: cfg.PublicWriteIPLimit, Window: time.Minute,
 			Key: ratelimit.ByIPPrefix, OnFailure: ratelimit.FailOpen,
 		},
 		ratelimit.Rule{
-			Name: "public_write_form", Limit: 600, Window: time.Minute,
+			Name: "public_write_form", Limit: cfg.PublicWriteFormLimit, Window: time.Minute,
 			Key: ratelimit.ByPathValue("public_id"), OnFailure: ratelimit.FailOpen,
 		},
 	)(writes)

@@ -65,11 +65,13 @@ Nguyên tắc: mỗi component thêm vào phải trả lời được **"ở con
 | ❌ **ClickHouse** | 340k event/ngày | Rollup 5 phút trên Postgres trả funnel query trong ms |
 | ❌ **Microservices** | — | Không có team thứ hai, không có profile tải phân kỳ đã đo |
 
-## 2.6 Kết quả đo (2026-08-07)
+## 2.6 Kết quả đo (2026-08-08)
 
 Kịch bản trong `load/`, chạy bằng `docker compose --profile load run --rm k6 run /scripts/<tên>.js`.
 
 > ⚠️ **Không phải số liệu production.** k6 chạy **cùng Docker VM** với server: 8 vCPU chia cho postgres + redis + app + worker + caddy + chính bộ sinh tải, cộng overhead mạng của Docker Desktop trên macOS. Coi đây là **sàn**, không phải trần. Đo lại trên hạ tầng tách rời trước khi tin.
+
+Lần đo này chạy trên **cơ sở dữ liệu trắng** vừa migrate, sau khi dọn toàn bộ dữ liệu thử. Bản đo trước (2026-08-07) chạy trên DB đã có sẵn ~108k bản ghi, nên hai bảng không so sánh trực tiếp được với nhau.
 
 ### Redirect — `load/redirect.js`
 
@@ -77,9 +79,11 @@ Mục tiêu: p99 < 80ms @ 500 RPS.
 
 | Giai đoạn | p90 | p95 | **p99** | lỗi |
 |---|---|---|---|---|
-| burst 500 RPS × 60s | 0,99ms | 1,33ms | **2,23ms** | 0 / 30.001 |
+| burst 500 RPS × 60s | 1,88ms | 2,68ms | **7,15ms** | 0 / 30.001 |
 
-**Dư ~36 lần.** Tải gồm 2% code không tồn tại (mô phỏng dò quét) và 2% link hết hạn; negative cache khiến cả hai không chạm database. Một outlier `max = 8,16s` — request đầu tiên, cold connection; p99 không phản ánh nó.
+**Dư ~11 lần.** Tải gồm 2% code không tồn tại (mô phỏng dò quét) và 2% link hết hạn; negative cache khiến cả hai không chạm database.
+
+Chậm hơn lần đo trước (2,23ms → 7,15ms) và tôi **không giải thích được chênh lệch này bằng dữ liệu đang có**. Cùng ngưỡng, cùng kịch bản, khác thời điểm và khác trạng thái máy. Đừng coi một trong hai là "đúng" cho tới khi đo được trên hạ tầng tách rời — đó chính là mục còn treo trong checklist go-live.
 
 ### Render biểu mẫu — `load/render.js`
 
@@ -87,70 +91,43 @@ Mục tiêu: p99 < 300ms @ 200 RPS.
 
 | p90 | p95 | **p99** | lỗi |
 |---|---|---|---|
-| 5,01ms | 6,58ms | **10,85ms** | 0 / 13.503 |
+| 4,51ms | 5,85ms | **10,22ms** | 0 / 4.501 |
 
 ### Submit — `load/submit.js`
 
-Mục tiêu: p99 < 500ms @ 100 RPS.
+Đây là chỗ bản đo trước **sai**, và sai theo kiểu tệ nhất: nó công bố một con số của hệ thống không tồn tại.
 
-| RPS yêu cầu | p95 | **p99** | throughput thực | lỗi |
+**Với giới hạn mặc định đang ship**, k6 nhận **120 / 6.000** request thành công, phần còn lại là `429`. Đó không phải lỗi — đó là `PUBLIC_WRITE_IP_LIMIT = 60/phút` làm đúng việc: mọi request từ một container k6 dùng chung một dải /24, nên luật theo IP chạm trần trước ứng dụng rất xa. 60/phút × 2 phút = 120, khớp chính xác.
+
+Nên phải nói rõ **con số nào đo dưới điều kiện nào**:
+
+| Điều kiện | Trần quan sát được |
+|---|---|
+| Mặc định (`PUBLIC_WRITE_IP_LIMIT=60`) | **60 lượt gửi/phút mỗi dải /24** — đây là con số vận hành |
+| Nâng giới hạn (`=1000000`) | xem bảng dưới — đây là năng lực ứng dụng |
+
+| RPS yêu cầu | p95 | **p99** | throughput thực | ghi chú |
 |---|---|---|---|---|
-| 100 | 6,97ms | **16,78ms** | 100/s | 0 |
-| 300 | 8,11ms | 84,53ms | 300/s | 0 |
-| 600 | 11,21ms | 66,34ms | 599/s | 0 |
-| 1200 | 535ms | 613ms | **802/s** | 0 |
+| 100 | 5,29ms | **10,95ms** | 100/s | sạch |
+| 300 | 3,91ms | **10,82ms** | 300/s | sạch |
+| 600 | 4,77ms | **15,45ms** | 600/s | sạch |
+| 900 | 47,3ms | **175ms** | 890/s | bắt đầu drop iteration |
+| 1200 | 314ms | **428ms** | 1.120/s | bão hòa, median 236ms |
 
-**Trần ≈ 800 submission/s.** Ở 1200 RPS, k6 drop 23.568 iteration vì không sinh kịp; server xử lý hết những gì nhận được, **không lỗi nào**. Bão hòa sạch, không sụp đổ. So với burst thiết kế 50–100/s: **dư ~8 lần**.
+**Đầu gối nằm giữa 600 và 900/s.** Ở 1200 RPS server vẫn không trả lỗi nào — nó chậm đi chứ không sụp. So với burst thiết kế 50–100/s: dư khoảng 6–9 lần **nếu** giới hạn được nâng; còn với cấu hình mặc định thì giới hạn mới là thứ quyết định, không phải năng lực máy.
 
-Advisory lock của audit chain (theo tenant) **không** thành nút cổ chai ở mức này — phần việc trong lock chỉ là một SELECT + một INSERT. 108.386 entry, chain vẫn `valid: true` sau ~60k ghi đồng thời. Nhưng nó là trần **theo tenant**: một tổ chức duy nhất vượt xa mức này sẽ gặp nó trước.
+Advisory lock của audit chain (theo tenant) không thành nút cổ chai ở mức này — phần việc trong lock chỉ là một SELECT + một INSERT. Nhưng nó là trần **theo tenant**: một tổ chức duy nhất vượt xa mức này sẽ gặp nó trước.
 
 ### Export ở quy mô thật
 
-108.382 submission, form 2 phiên bản, có trường nhạy cảm:
+181.060 submission do chính các lần chạy submit ở trên sinh ra, form 1 phiên bản, có một trường nhạy cảm được mã hoá riêng:
 
 | | Thời gian | Kích thước | RAM worker |
 |---|---|---|---|
-| không kèm dữ liệu nhạy cảm | **2s** | — | ~37 MB |
-| kèm dữ liệu nhạy cảm (giải mã từng dòng) | **14s** | 9,9 MB | ~70 MB |
+| không kèm dữ liệu nhạy cảm | **8,4s** | 14,7 MB | ~114 MB |
+| kèm dữ liệu nhạy cảm (giải mã từng dòng) | **21,3s** | 15,1 MB | ~114 MB |
 
-RAM ~70 MB cho 108k dòng xác nhận StreamWriter hoạt động đúng: dựng workbook trong bộ nhớ sẽ tốn hơn hàng chục lần.
+Chênh 12,9s là chi phí mở khoá theo từng chủ thể — mỗi dòng là một lần unwrap. Nó **tuyến tính theo số dòng**, không theo kích thước tệp: hai bản chỉ chênh 0,4 MB.
 
-### Bug tìm được nhờ load test
+RAM đứng yên ở ~114 MB cho cả hai, tức là đường ghi có stream thật chứ không dựng cả workbook trong bộ nhớ. Đây là thứ quyết định liệu một tổ chức có 5 triệu bản ghi thì export có giết worker hay không — và ở mức đo được thì không.
 
-**Truy vấn export là O(n×m) và chỉ lộ ra trên 1.000 dòng.** Subquery lấy trạng thái đồng ý join `consent.current_consents` mà **thiếu `tenant_id`** — cột dẫn đầu khóa chính của bảng đó. Index vô dụng, Postgres quét tuần tự toàn bộ bảng cho **mỗi** submission:
-
-```
-Seq Scan on current_consents  (rows=216651, loops=2000)
-Buffers: shared hit=5,820,000
-Execution Time: 45301 ms        -- cho 2.000 dòng
-```
-
-Ở 108k dòng là ~23 tỉ phép so sánh; job chạy 1.050 giây và chưa kết thúc.
-
-Sửa: đọc thẳng từ `consent.records` — nơi giữ **điều đã đồng ý cùng submission đó** — thay vì join sang trạng thái hiện tại. Nhanh hơn **và** đúng ngữ nghĩa hơn cho một báo cáo.
-
-```
-Execution Time: 45301 ms → 93 ms      (485×)
-Export 108k dòng: >1050s → 2s
-```
-
-Với 5 bản ghi thử nghiệm, truy vấn này chạy tức thì. Không có load test thì bug này chỉ lộ ra ở khách hàng đầu tiên có dữ liệu thật.
-
-**Bug thứ hai, trong chính bộ test:** lần chạy đầu báo `http_req_failed 3,80%`. Không phải hệ thống — k6 mặc định coi 404/410 là thất bại, mà đó chính là hai trường hợp kịch bản cố ý sinh ra. Thêm `http.setResponseCallback(http.expectedStatuses(302, 404, 410))`. Nếu không sửa, bộ test báo động giả mãi mãi và người ta học cách phớt lờ nó.
-
-### Đã sửa sau đợt đo (2026-08-07)
-
-**Phễu chỉ nối được 2/4 chặng.** `analytics.events` chỉ có `click` và `submit`; `views` và `starts` luôn bằng 0, nên `Tỉ lệ hoàn thành` = submits/views **luôn in ra 0,0%** cho một form có 108k lượt gửi, và sheet "Rơi rớt theo trang" luôn rỗng. Cùng loại với bug query O(n×m): một con số sai được in ra và trông như thật.
-
-Sửa theo hai hướng khác nhau, có chủ đích:
-
-- `form_view` ghi **ở server** khi render `GET /api/pub/forms/{id}`. Mẫu số của tỉ lệ hoàn thành không nên phụ thuộc việc client có chạy JavaScript hay không — nếu phụ thuộc, sẽ có lúc thiếu, và biểu hiện là tỉ lệ chuyển đổi vượt 100%.
-- `form_start` và `form_page_view` qua `POST /api/pub/events` — đây là tín hiệu tương tác, chỉ client biết.
-
-Endpoint beacon **chỉ nhận hai loại đó**. `click` và `submit` do server ghi; chấp nhận chúng từ client sẽ cho phép bất kỳ ai thổi phồng số liệu chuyển đổi của tenant khác bằng một vòng lặp curl.
-
-### Việc còn lại
-
-- Đo lại trên hạ tầng tách rời (client và server khác máy).
-- Chưa đo: upload tệp ở tải cao, cổng DSR, đăng nhập (argon2id ~24ms/lần là chi phí có chủ đích).
-- Theo dõi các ngưỡng ở [7.4](07-operations.md#74-scaling-path) hằng tháng: scaling path chỉ hoạt động nếu có người nhìn những con số đã kích hoạt nó.

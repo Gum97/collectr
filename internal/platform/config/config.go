@@ -55,6 +55,18 @@ type Config struct {
 	// operator who just ran the container is already looking.
 	SetupToken string
 
+	// PublicWriteIPLimit and PublicWriteFormLimit cap submissions and uploads per
+	// minute, by caller /24 and by form.
+	//
+	// Configurable because the defaults are sized for a form on a website, and a
+	// conference stand or a televised campaign is a different shape of traffic
+	// arriving through one NAT. They are also what makes a load test measurable:
+	// every request from one k6 container shares an address, so the per-IP rule
+	// is the binding constraint long before the application is, and a throughput
+	// number measured without saying which limit was in force describes nothing.
+	PublicWriteIPLimit   int
+	PublicWriteFormLimit int
+
 	// VisitPepper keys the HMAC over visit tokens, keeping visit ids from being
 	// forgeable and from correlating across deployments.
 	VisitPepper []byte
@@ -123,6 +135,8 @@ func Load() (Config, error) {
 		RedisURL:             os.Getenv("REDIS_URL"),
 		DeploymentRole:       envOr("DEPLOYMENT_ROLE", "controller"),
 		SetupToken:           os.Getenv("SETUP_TOKEN"),
+		PublicWriteIPLimit:   envInt("PUBLIC_WRITE_IP_LIMIT", 60, &errs),
+		PublicWriteFormLimit: envInt("PUBLIC_WRITE_FORM_LIMIT", 600, &errs),
 		EventStreamMaxLen:    int64(envInt("EVENT_STREAM_MAXLEN", 1_000_000, &errs)),
 		EventBufferSize:      envInt("EVENT_BUFFER_SIZE", 10_000, &errs),
 		LinkCacheTTL:         time.Duration(envInt("LINK_CACHE_TTL_SECONDS", 300, &errs)) * time.Second,

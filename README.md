@@ -162,6 +162,8 @@ curl -X POST http://localhost/api/v1/members/invitations -b cookies.txt \
 | `REDIS_URL` | — | Chuỗi kết nối Redis |
 | `TENANT_KEK` | — | **Bắt buộc.** Khóa gốc mã hóa, 32 byte base64 |
 | `SETUP_TOKEN` | tự sinh | Mã cho endpoint tạo chủ sở hữu đầu tiên. Bỏ trống thì máy chủ tự sinh và in ra log |
+| `PUBLIC_WRITE_IP_LIMIT` | `60` | Lượt gửi/tải tệp mỗi phút cho mỗi dải /24. Nâng lên khi khách đi chung một NAT (hội chợ, văn phòng) |
+| `PUBLIC_WRITE_FORM_LIMIT` | `600` | Lượt gửi mỗi phút cho mỗi biểu mẫu |
 | `STORAGE_DRIVER` | `local` | `local` hoặc `s3` |
 | `STORAGE_LOCAL_PATH` | `/data/files` | Thư mục lưu tệp khi dùng `local` |
 | `STORAGE_S3_*` | — | Endpoint, bucket, khóa truy cập khi dùng `s3` |

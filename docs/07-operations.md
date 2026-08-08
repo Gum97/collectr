@@ -175,8 +175,10 @@ Mỗi bước có **điều kiện kích hoạt định lượng**. Hệ thống
 Một cài đặt mới chưa có ai sở hữu. Instance nằm sau TLS tự động xuất hiện trong Certificate Transparency log trong vài giây, và đó là nơi máy quét đọc — nên khoảng thời gian giữa `docker compose up` và lần tạo tài khoản đầu tiên là khoảng thời gian duy nhất mà mã khởi tạo là thứ đứng giữa.
 
 **Kỹ thuật**
-- [x] Load-test `/r/{code}` (k6) → p99 = 2,23ms ở 500 RPS ([kết quả](02-estimation.md#26-kết-quả-đo-2026-08-07))
-- [x] Load-test `POST /submissions` → p99 = 16,78ms ở 100 RPS; trần ≈ 800/s
+- [x] Load-test `/r/{code}` (k6) → p99 = 7,15ms ở 500 RPS ([kết quả](02-estimation.md#26-kết-quả-đo-2026-08-08))
+- [x] Load-test `POST /submissions` → đầu gối giữa 600–900/s **khi đã nâng giới hạn**; với cấu hình mặc định thì `PUBLIC_WRITE_IP_LIMIT` là thứ chặn trước, không phải máy
+- [x] Xác minh chuỗi audit 181.065 entry → `valid: true` trong 0,29s
+- [ ] Quyết định `PUBLIC_WRITE_IP_LIMIT` cho tình huống thật: 60/phút mỗi dải /24 là đúng cho form trên website, **quá thấp** cho gian hàng hội chợ nơi mọi người đi chung một NAT
 - [ ] Đo lại trên hạ tầng tách rời (client và server khác máy)
 - [ ] Load-test upload tệp 1 MB ở tải cao
 - [ ] Diễn tập restore thành công, có bấm giờ

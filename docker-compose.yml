@@ -73,6 +73,9 @@ services:
       # The API server connects as collectr_app, for which the row-level security
       # policies are enforced. Running it as the owner would silently disable them.
       DATABASE_URL: postgres://collectr_app:${APP_DB_PASSWORD}@postgres:5432/collectr?sslmode=disable
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
+      PUBLIC_WRITE_IP_LIMIT: ${PUBLIC_WRITE_IP_LIMIT:-60}
+      PUBLIC_WRITE_FORM_LIMIT: ${PUBLIC_WRITE_FORM_LIMIT:-600}
       # Guards the scrape endpoint. Unset leaves it open and the server says so
       # at startup; the shipped Caddy config proxies everything, so "put a
       # firewall in front of it" is not a plan anybody executed.

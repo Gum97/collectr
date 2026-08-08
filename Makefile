@@ -100,8 +100,12 @@ logs: ## Tail application logs
 psql: ## Open a psql shell as the owner role
 	docker compose exec postgres psql -U collectr -d collectr
 
+.PHONY: load-seed
+load-seed: ## Seed links, purposes and the form the k6 scripts expect
+	@EMAIL=$(EMAIL) PASSWORD=$(PASSWORD) ./load/seed.sh
+
 .PHONY: load
-load: ## Run the load tests (needs the stack up)
+load: ## Run the load tests (needs the stack up, and make load-seed first)
 	docker compose --profile load run --rm k6 run /scripts/redirect.js
 	docker compose --profile load run --rm k6 run /scripts/render.js
 	docker compose --profile load run --rm k6 run /scripts/submit.js
