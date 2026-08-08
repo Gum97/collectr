@@ -1,0 +1,51 @@
+@import './fonts.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body { @apply bg-canvas text-ink font-sans text-body antialiased; }
+  /* Focus must stay visible. The admin app is operated by people who work in it
+     all day and navigate by keyboard, and the compliance screens are exactly
+     where losing track of focus causes the wrong record to be acted on. */
+  :focus-visible { @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-canvas; }
+  h1, h2, h3 { @apply font-display; }
+}
+
+@layer components {
+  /* Identifiers and metadata: monospace so a ULID and a hash are scannable, and
+     small enough that they never compete with the value they describe. */
+  .id-chip { @apply font-mono text-meta text-faint; }
+
+  /* The uppercase label above a figure or a column. */
+  .cap {
+    @apply font-mono text-[11px] uppercase tracking-caps text-faint;
+  }
+
+  .input {
+    @apply w-full rounded border border-line bg-surface px-3 py-2 text-body text-ink
+           placeholder:text-ghost focus:border-accent focus:outline-none;
+  }
+
+  .btn-primary {
+    @apply rounded bg-accent px-3.5 py-2 text-chip font-medium text-white
+           hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-45;
+  }
+
+  .btn {
+    @apply rounded border border-line bg-surface px-3.5 py-2 text-chip font-medium text-ink
+           hover:border-ghost hover:bg-chrome disabled:cursor-not-allowed disabled:opacity-45;
+  }
+
+  /* Reserved for the irreversible: erasure, a hold that overrides retention, a
+     published version being withdrawn. Not for deleting a draft. */
+  .btn-legal {
+    @apply rounded bg-legal px-3.5 py-2 text-chip font-medium text-white
+           hover:brightness-90 disabled:cursor-not-allowed disabled:opacity-45;
+  }
+
+  .card {
+    @apply rounded-card border border-line bg-surface;
+  }
+}
