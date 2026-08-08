@@ -32,6 +32,7 @@ import {
 import { SubmissionGrid } from './SubmissionGrid'
 import { ExportDialog } from './ExportDialog'
 import { RectifyDialog } from './RectifyDialog'
+import { RevisionDialog } from './RevisionDialog'
 import {
   buildRegistry,
   clipToFrom,
@@ -127,6 +128,7 @@ function Grid({
   const [revealPrompt, setRevealPrompt] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [rectifying, setRectifying] = useState<ApiRow | null>(null)
+  const [history, setHistory] = useState<ApiRow | null>(null)
 
   const cursor = trail[trail.length - 1] ?? cursorForTo(to)
 
@@ -293,7 +295,16 @@ function Grid({
             revealSensitive={reveal}
             onRequestReveal={canReadSensitive ? () => setRevealPrompt(true) : undefined}
             onRectify={canRectify ? (row) => setRectifying(row) : undefined}
+            onHistory={(row) => setHistory(row)}
           />
+
+          {history && (
+            <RevisionDialog
+              submissionId={history.id}
+              revealSensitive={reveal}
+              onClose={() => setHistory(null)}
+            />
+          )}
 
           {rectifying && (
             <RectifyDialog

@@ -59,6 +59,11 @@ func (h *Handler) RegisterAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/forms/{id}/versions/{a}/diff/{b}", h.versionDiff)
 	mux.HandleFunc("GET /api/v1/forms/{id}/analytics/funnel", h.funnel)
 	mux.HandleFunc("GET /api/v1/forms/{id}/submissions", h.submissions)
+	// Keyed by submission, not by form or subject. The rectification endpoint
+	// next door is keyed by subject id, and two routes whose {id} means
+	// different things is a mistake waiting to be made by whoever writes the
+	// third one.
+	mux.HandleFunc("GET /api/v1/submissions/{id}/revisions", h.revisions)
 }
 
 // publicSchema returns the live version for rendering.
@@ -585,4 +590,47 @@ func (h *Handler) versionDiff(w http.ResponseWriter, r *http.Request) {
 		"breaking": result.Breaking,
 		"blocked":  result.Blocked,
 	})
+}
+
+// revisions serves a submission's correction history.
+//
+// Gated by the same capabilities as the grid it is opened from: reading it is
+// reading answers, and the superseded values in it are answers too. Sensitive
+// fields stay masked without submission.read_sensitive, because a field that
+// became sensitive in a later version still has older plaintext in the column
+// and this screen must not be the way around the mask.
+func (h *Handler) revisions(w http.ResponseWriter, r *http.Request) {
+	actor, ok := authn.ActorFrom(r.Context())
+	if !ok {
+		httpx.Error(w, r, http.StatusUnauthorized, "unauthenticated", "Authentication required")
+		return
+	}
+	if !actor.Can(authn.CapSubmissionRead) {
+		httpx.Error(w, r, http.StatusForbidden, "forbidden", "Insufficient permissions")
+		return
+	}
+
+	submissionID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	reveal := r.URL.Query().Get("include_sensitive") == "true" &&
+		actor.Can(authn.CapSubmissionReadSensitive)
+
+	revs, err := h.svc.Revisions(r.Context(), actor.TenantID, submissionID, reveal)
+	switch {
+	case errors.Is(err, domain.ErrSubmissionNotFound):
+		// Tenant isolation is enforced by the row-level policy the query runs
+		// under, so another tenant's submission is simply not there.
+		http.NotFound(w, r)
+		return
+	case err != nil:
+		httpx.Logger(r.Context()).Error("listing revisions", "error", err)
+		httpx.Error(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
+		return
+	}
+
+	httpx.JSON(w, r, http.StatusOK, map[string]any{"data": revs})
 }

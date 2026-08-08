@@ -2,10 +2,13 @@
 package app
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,6 +33,7 @@ type Repository interface {
 	ResolvePublic(ctx context.Context, publicID string) (store.PublicForm, error)
 	ListSubmissions(ctx context.Context, tenantID, formID uuid.UUID, before time.Time, limit int) ([]store.Submission, error)
 	ListForms(ctx context.Context, tenantID uuid.UUID, projectID *uuid.UUID, limit int) ([]store.Summary, error)
+	ListRevisions(ctx context.Context, tenantID, submissionID uuid.UUID) ([]store.Revision, map[string]any, uuid.UUID, error)
 }
 
 // Service authors and serves forms.
@@ -257,8 +261,11 @@ type Row struct {
 	// record on the subject's behalf is keyed by it, so the grid has to say
 	// whether the row has one: a button that fails on click is worse than a
 	// button that is not drawn.
-	SubjectID *uuid.UUID      `json:"subject_id,omitempty"`
-	Cells     map[string]Cell `json:"cells"`
+	SubjectID *uuid.UUID `json:"subject_id,omitempty"`
+	// RevisionCount is 0 for a record nobody has corrected, which is most of
+	// them; the field is omitted then so its presence means something.
+	RevisionCount int             `json:"revision_count,omitempty"`
+	Cells         map[string]Cell `json:"cells"`
 }
 
 // Cell is one answer with the state that explains an absent value.
@@ -327,8 +334,8 @@ func (s *Service) Submissions(ctx context.Context, tenantID, formID uuid.UUID, b
 		schema := schemaByID[sub.FormVersionID]
 		row := Row{
 			ID: sub.ID, VersionNo: sub.VersionNo, SubmittedAt: sub.SubmittedAt,
-			SubjectID: sub.SubjectID,
-			Status:    sub.Status, Cells: make(map[string]Cell, len(columns)),
+			SubjectID: sub.SubjectID, RevisionCount: sub.RevisionCount,
+			Status: sub.Status, Cells: make(map[string]Cell, len(columns)),
 		}
 		for _, col := range columns {
 			field, inSchema := schema.Fields[col.FieldID]
@@ -480,4 +487,147 @@ func (s *Service) VersionPair(ctx context.Context, tenantID, formID, aID, bID uu
 		return store.Version{}, store.Version{}, domain.ErrFormNotFound
 	}
 	return a, b, nil
+}
+
+// FieldChange is one answer as it stood before a change and after it.
+type FieldChange struct {
+	FieldID string `json:"field_id"`
+	Label   string `json:"label"`
+	Before  string `json:"before"`
+	After   string `json:"after"`
+	// Masked reports that the values are withheld rather than absent. A field
+	// can become sensitive in a later version while older plaintext answers
+	// remain in the column; showing them here would walk around the masking the
+	// grid applies to the very same value.
+	Masked bool `json:"masked"`
+}
+
+// Revision is one recorded change, expressed as what changed.
+type Revision struct {
+	ID        uuid.UUID     `json:"id"`
+	ChangedAt time.Time     `json:"changed_at"`
+	ActorType string        `json:"actor_type"`
+	ActorID   string        `json:"actor_id"`
+	ActorName string        `json:"actor_name,omitempty"`
+	Source    string        `json:"source"`
+	Changes   []FieldChange `json:"changes"`
+}
+
+// Revisions returns a submission's correction history, newest first.
+//
+// The stored row holds only the answers as they were before the change, so what
+// changed is reconstructed here: each revision's "after" state is the next
+// revision's "before", and the newest one's is the answers on file now. That
+// walk is the whole reason the store returns them oldest-first.
+//
+// Presenting it as a list of changed fields rather than two blobs is not
+// cosmetic. A reader asked to compare two JSON objects will confirm whatever
+// they already believe; the question this screen answers is "what did somebody
+// change", and it should not be left as an exercise.
+func (s *Service) Revisions(ctx context.Context, tenantID, submissionID uuid.UUID, revealSensitive bool) ([]Revision, error) {
+	stored, current, formID, err := s.repo.ListRevisions(ctx, tenantID, submissionID)
+	if err != nil {
+		return nil, err
+	}
+	if len(stored) == 0 {
+		// Not an error and not an empty screen: a record nobody has corrected is
+		// the normal case, and the caller says so in words.
+		return []Revision{}, nil
+	}
+
+	versions, err := s.repo.ListVersions(ctx, tenantID, formID)
+	if err != nil {
+		return nil, err
+	}
+	vs := make([]domain.VersionedSchema, 0, len(versions))
+	for _, v := range versions {
+		vs = append(vs, domain.VersionedSchema{VersionNo: v.VersionNo, Schema: v.Schema})
+	}
+	cols := make(map[string]domain.Column, len(vs))
+	for _, c := range domain.BuildColumnRegistry(vs) {
+		cols[string(c.FieldID)] = c
+	}
+
+	out := make([]Revision, 0, len(stored))
+	for i, r := range stored {
+		after := current
+		if i+1 < len(stored) {
+			after = stored[i+1].Before
+		}
+
+		rev := Revision{
+			ID: r.ID, ChangedAt: r.CreatedAt, Source: r.Source,
+			ActorName: r.ActorName,
+			Changes:   changedFields(cols, r.Before, after, revealSensitive),
+		}
+		rev.ActorType, rev.ActorID, _ = strings.Cut(r.ChangedBy, ":")
+		if rev.ActorName == "" && r.ActorEmail != "" {
+			rev.ActorName = r.ActorEmail
+		}
+		out = append(out, rev)
+	}
+
+	// Newest first for reading; the ascending order was only needed for the walk.
+	slices.Reverse(out)
+	return out, nil
+}
+
+// changedFields lists the answers that differ between two states.
+//
+// Fields absent from both are skipped; a field present in one and not the other
+// is a change, and shows as an empty string on the side it is missing from --
+// adding an answer and clearing one are both corrections.
+func changedFields(cols map[string]domain.Column, before, after map[string]any, reveal bool) []FieldChange {
+	ids := make(map[string]struct{}, len(before)+len(after))
+	for id := range before {
+		ids[id] = struct{}{}
+	}
+	for id := range after {
+		ids[id] = struct{}{}
+	}
+
+	out := make([]FieldChange, 0, 4)
+	for id := range ids {
+		b, a := answerText(before[id]), answerText(after[id])
+		if b == a {
+			continue
+		}
+		c, known := cols[id]
+		ch := FieldChange{FieldID: id, Label: c.Label, Before: b, After: a}
+		if !known {
+			// A field the current schemas no longer describe. Named by id rather
+			// than dropped: it was answered, and silently omitting it from a
+			// history would misreport what happened.
+			ch.Label = id
+		}
+		if c.Sensitive && !reveal {
+			ch.Masked, ch.Before, ch.After = true, "", ""
+		}
+		out = append(out, ch)
+	}
+	slices.SortFunc(out, func(x, y FieldChange) int { return cmp.Compare(x.FieldID, y.FieldID) })
+	return out
+}
+
+// answerText renders an answer for comparison and display.
+//
+// Attachments are reduced to their file id rather than shown as JSON: a
+// rectification cannot change one, so the only reason a file appears in a diff
+// is a submission edited by some other path, and the id is what identifies it.
+func answerText(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return t
+	case map[string]any:
+		if id, ok := t["file_id"].(string); ok {
+			return "tệp " + id
+		}
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }

@@ -208,6 +208,8 @@ var (
 	ErrVersionNotFound = errors.New("form version not found")
 	ErrVersionRetired  = errors.New("form version retired")
 	ErrNoDraft         = errors.New("form has no draft to publish")
+
+	ErrSubmissionNotFound = errors.New("submission not found")
 )
 
 // Page returns the page with the given id.

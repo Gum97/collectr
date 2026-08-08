@@ -33,6 +33,7 @@ export function SubmissionGrid({
   revealSensitive,
   onRequestReveal,
   onRectify,
+  onHistory,
 }: {
   columns: GridColumn[]
   rows: ApiRow[]
@@ -41,6 +42,9 @@ export function SubmissionGrid({
    *  record on somebody's behalf is a DSR, not a table edit, so it is gated by
    *  the same capability as the rest of them. */
   onRectify?: (row: ApiRow) => void
+  /** Always available to a reader of the grid: the history is answers, and
+   *  whoever may read the answers may read what they used to be. */
+  onHistory: (row: ApiRow) => void
   /** Absent when the reader has no right to unmask, which is different from
    *  there being nothing to unmask. */
   onRequestReveal?: () => void
@@ -76,6 +80,7 @@ export function SubmissionGrid({
               </Th>
             ))}
             <Th>TRẠNG THÁI</Th>
+            <Th>SỬA ĐỔI</Th>
             {onRectify && <Th>{''}</Th>}
           </>
         }
@@ -107,6 +112,25 @@ export function SubmissionGrid({
                 <span title={status.meaning}>
                   <StatusPill tone={status.tone}>{status.label}</StatusPill>
                 </span>
+              </Td>
+              <Td className="whitespace-nowrap">
+                {row.revision_count ? (
+                  <button
+                    type="button"
+                    onClick={() => onHistory(row)}
+                    className="rounded border border-accent px-1.5 text-meta font-semibold text-accent"
+                    title="Bản ghi này đã được sửa sau khi gửi. Xem đã đổi gì, ai đổi."
+                  >
+                    {row.revision_count} lần
+                  </button>
+                ) : (
+                  // No button when there is nothing to show. A control that
+                  // opens an empty box teaches people to stop pressing it, and
+                  // this one is worth pressing on the rows where it appears.
+                  <span className="text-meta text-faint" title="Chưa từng sửa">
+                    —
+                  </span>
+                )}
               </Td>
               {onRectify && (
                 <Td className="whitespace-nowrap">

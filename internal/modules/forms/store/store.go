@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -76,6 +77,11 @@ type Submission struct {
 	// every one of them as unanswered.
 	SubjectID     *uuid.UUID
 	SensitiveBlob []byte
+	// RevisionCount is how many times the answers have been corrected. Carried
+	// on the row so the grid can show which records were changed after the fact
+	// without a request per row -- that is the compliance-relevant signal, and
+	// hiding it behind a click means nobody looks.
+	RevisionCount int
 }
 
 // CreateForm inserts a form with its initial draft.
@@ -361,7 +367,9 @@ func (s *Store) ListSubmissions(ctx context.Context, tenantID, formID uuid.UUID,
 	const q = `
 		SELECT s.id, s.form_id, s.form_version_id, v.version_no, s.answers,
 		       s.visible_fields, s.status, s.submitted_at,
-		       s.data_subject_id, s.answers_enc
+		       s.data_subject_id, s.answers_enc,
+		       (SELECT count(*) FROM forms.submission_revisions r
+		         WHERE r.submission_id = s.id)
 		FROM forms.submissions s
 		JOIN forms.form_versions v ON v.id = s.form_version_id
 		WHERE s.form_id = $1 AND s.status <> 'erased' AND s.submitted_at < $2
@@ -379,7 +387,7 @@ func (s *Store) ListSubmissions(ctx context.Context, tenantID, formID uuid.UUID,
 			var sub Submission
 			if err := rows.Scan(&sub.ID, &sub.FormID, &sub.FormVersionID, &sub.VersionNo,
 				&sub.Answers, &sub.VisibleFields, &sub.Status, &sub.SubmittedAt,
-				&sub.SubjectID, &sub.SensitiveBlob); err != nil {
+				&sub.SubjectID, &sub.SensitiveBlob, &sub.RevisionCount); err != nil {
 				return err
 			}
 			out = append(out, sub)
@@ -395,3 +403,88 @@ func (s *Store) ListSubmissions(ctx context.Context, tenantID, formID uuid.UUID,
 // DB exposes the pool so callers can compose a submission with other modules'
 // writes inside one transaction.
 func (s *Store) DB() *postgres.DB { return s.db }
+
+// Revision is one recorded change to a submission's answers.
+//
+// The row stores the answers as they were *before* the change and nothing else.
+// Reconstructing what actually changed is left to the caller, which needs the
+// following state to do it -- see Service.Revisions.
+type Revision struct {
+	ID        uuid.UUID
+	ChangedBy string
+	Source    string
+	Before    map[string]any
+	CreatedAt time.Time
+	// ActorEmail is empty when the change was made by the data subject rather
+	// than a member, and when a member has since been deleted. Both are ordinary
+	// and the reader is told which, rather than shown a bare uuid.
+	ActorEmail string
+	ActorName  string
+}
+
+// ListRevisions returns a submission's change history, oldest first.
+//
+// Ascending because the history is read as a sequence: each revision's "after"
+// state is the next one's "before", and the last one's is the answers on file
+// now. Descending would make that walk read backwards for no gain.
+func (s *Store) ListRevisions(ctx context.Context, tenantID, submissionID uuid.UUID) ([]Revision, map[string]any, uuid.UUID, error) {
+	// changed_by holds "user:<uuid>" or "subject:<uuid>", and only the first has
+	// a name to look up.
+	//
+	// The uuid is extracted with a regex that yields NULL for anything else,
+	// rather than stripping the prefix under a LIKE guard in the same ON clause.
+	// Postgres does not promise to evaluate the guard first, and it did not: the
+	// cast ran on a "subject:" row and the whole query failed with an invalid
+	// uuid. It passed every test until a subject actually corrected something,
+	// because until then every row began with "user:".
+	const q = `
+		SELECT r.id, r.changed_by, r.change_source, r.answers_before, r.changed_at,
+		       coalesce(u.email, ''), coalesce(u.name, '')
+		FROM forms.submission_revisions r
+		LEFT JOIN iam.users u
+		       ON u.id = substring(r.changed_by from
+		              '^user:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$')::uuid
+		WHERE r.submission_id = $1
+		ORDER BY r.changed_at ASC, r.id ASC`
+
+	var revs []Revision
+	var current map[string]any
+	var formID uuid.UUID
+	err := s.db.InTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
+		// The current answers come from the same transaction as the revisions.
+		// Read separately they could straddle a concurrent correction, and the
+		// screen would show a change that never happened: the newest revision's
+		// "after" would be diffed against answers already moved on from it.
+		err := tx.QueryRow(ctx,
+			`SELECT answers, form_id FROM forms.submissions WHERE id = $1`,
+			submissionID).Scan(&current, &formID)
+		if postgres.IsNoRows(err) {
+			return domain.ErrSubmissionNotFound
+		}
+		if err != nil {
+			return err
+		}
+
+		rows, err := tx.Query(ctx, q, submissionID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var r Revision
+			if err := rows.Scan(&r.ID, &r.ChangedBy, &r.Source, &r.Before,
+				&r.CreatedAt, &r.ActorEmail, &r.ActorName); err != nil {
+				return err
+			}
+			revs = append(revs, r)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		if errors.Is(err, domain.ErrSubmissionNotFound) {
+			return nil, nil, uuid.Nil, err
+		}
+		return nil, nil, uuid.Nil, fmt.Errorf("listing revisions: %w", err)
+	}
+	return revs, current, formID, nil
+}

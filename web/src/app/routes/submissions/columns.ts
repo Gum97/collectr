@@ -51,6 +51,8 @@ export interface ApiRow {
    *  behalf is keyed by it, so a row without one gets no button rather than a
    *  button that fails when pressed. */
   subject_id?: string
+  /** How many times the answers were corrected. Absent means never. */
+  revision_count?: number
   cells: Record<string, ApiCell | undefined>
 }
 
