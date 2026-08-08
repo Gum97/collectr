@@ -74,6 +74,9 @@ POST          /api/v1/forms/{id}/exports       # → job, xem doc 9
 GET           /api/v1/forms/{id}/files          # tệp đính kèm đã nhận
 POST          /api/v1/files/{id}/download-url   # → link ký 10 phút, ghi audit
 
+# Tổ chức
+GET|PATCH     /api/v1/org                      # tên + settings; kèm khối deployment CHỈ ĐỌC
+
 # Consent (chỉ đọc qua API — ghi phải qua form thật để có bằng chứng)
 GET           /api/v1/subjects/{id}/consents
 GET           /api/v1/consent/purposes

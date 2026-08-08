@@ -33,6 +33,8 @@ type Handler struct {
 	// setupToken guards the one-time bootstrap. Empty means the deployment was
 	// started without one, and setup is refused rather than left open.
 	setupToken string
+	// deployment is the read-only half of the settings screen.
+	deployment Deployment
 }
 
 // SetSetupToken supplies the secret that authorises creating the first owner.

@@ -30,6 +30,7 @@ import { Webhooks } from './routes/integrations/Webhooks'
 import { WebhookDeliveries } from './routes/integrations/WebhookDeliveries'
 import { ApiKeys } from './routes/integrations/ApiKeys'
 import { Files } from './routes/integrations/Files'
+import { OrgSettings } from './routes/OrgSettings'
 import { Account } from './routes/account/Account'
 import { EnableMFA } from './routes/account/EnableMFA'
 import { ForgotPassword } from './routes/account/ForgotPassword'
@@ -114,6 +115,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/compliance/dsr" element={<DSRQueue />} />
             <Route path="/compliance/dsr/:requestId" element={<DSRRequest />} />
             <Route path="/audit" element={<AuditLog />} />
+            <Route path="/settings" element={<OrgSettings />} />
             <Route path="/members" element={<Members />} />
             <Route path="/members/invitations" element={<Invitations />} />
             <Route path="/members/roles" element={<RoleMatrix />} />

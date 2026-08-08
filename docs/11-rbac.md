@@ -57,6 +57,17 @@ audit.read
 apikey.manage  webhook.manage
 ```
 
+`member.manage` cũng là quyền canh màn **Cài đặt tổ chức** (`/api/v1/org`). Nó
+cho đổi tên tổ chức và các thiết lập của tổ chức — **không** cho đụng tới cấu
+hình triển khai. Điểm cuối lưu trữ, khoá bí mật, giới hạn và thời hạn thuộc về
+người vận hành tiến trình và chỉ đặt được bằng biến môi trường.
+
+Ranh giới đó là có chủ đích và đáng giữ: một phiên quản trị bị chiếm mà đổi được
+điểm cuối lưu trữ là mọi tệp đính kèm về sau đi thẳng sang bucket của kẻ tấn
+công, chỉ bằng một lần gửi form và không cần chạm tới máy chủ. Đổi lúc đang chạy
+còn bỏ rơi mọi thứ đã ghi — `files.storage_key` trỏ vào bucket mà tiến trình
+không còn cấu hình để với tới.
+
 > [!WARNING]
 > Bản trước của tài liệu này còn liệt kê `project.read`, `project.manage`,
 > `form.delete`, `submission.edit`, `submission.delete`, `org.settings` và

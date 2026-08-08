@@ -276,6 +276,7 @@ func run() error {
 	iamHandler := iamapi.New(iamSvc, db, auditWriter, cfg.Env != "dev", cfg.MFAGrace)
 
 	auth := authn.NewAuthenticator(db)
+	iamSvc.SetAudit(auditWriter)
 	iamHandler.SetAuthenticator(auth)
 
 	// The bootstrap secret. Generated when the operator did not supply one, and
@@ -296,6 +297,19 @@ func run() error {
 			"setup_token", setupToken)
 	}
 	iamHandler.SetSetupToken(setupToken)
+	// What the settings screen shows without letting anyone change it. Driver
+	// name and limits, never an endpoint or a key.
+	iamHandler.SetDeployment(iamapi.Deployment{
+		StorageDriver:        cfg.Storage.Driver,
+		MailConfigured:       cfg.SMTP.Host != "",
+		BaseURL:              cfg.BaseURL,
+		ShortURLBase:         cfg.ShortURLBase,
+		DefaultRetentionDays: int(cfg.DefaultRetention.Hours() / 24),
+		DSRSLAHours:          int(cfg.DSRSLA.Hours()),
+		MFAGraceHours:        int(cfg.MFAGrace.Hours()),
+		PublicWriteIPLimit:   cfg.PublicWriteIPLimit,
+		PublicWriteFormLimit: cfg.PublicWriteFormLimit,
+	})
 
 	public := http.NewServeMux()
 	public.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -357,6 +371,7 @@ func run() error {
 	auditHandler.RegisterAdmin(admin)
 	dsrAdminHandler.RegisterAdmin(admin)
 	iamHandler.RegisterAdmin(admin)
+	iamHandler.RegisterOrg(admin)
 	iamHandler.RegisterMembers(admin)
 	iamHandler.RegisterProjects(admin)
 	iamHandler.RegisterAPIKeys(admin)

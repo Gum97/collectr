@@ -431,3 +431,69 @@ func truncate(s string, n int) string {
 	}
 	return s[:n]
 }
+
+// Tenant is an organisation's own record.
+type Tenant struct {
+	ID   uuid.UUID
+	Name string
+	Slug string
+	// Settings holds what the organisation may change about itself. Deployment
+	// settings -- storage, keys, rate limits -- are deliberately not here: they
+	// belong to whoever runs the server, and an administrator who could edit
+	// them from the interface could redirect every future attachment somewhere
+	// else with one form submission.
+	Settings map[string]any
+}
+
+// GetTenant reads one organisation.
+func (s *Store) GetTenant(ctx context.Context, tenantID uuid.UUID) (Tenant, error) {
+	const q = `SELECT id, name, slug, settings FROM iam.tenants WHERE id = $1`
+
+	var t Tenant
+	err := s.db.InTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, q, tenantID).Scan(&t.ID, &t.Name, &t.Slug, &t.Settings)
+	})
+	if postgres.IsNoRows(err) {
+		return Tenant{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return Tenant{}, fmt.Errorf("reading organisation: %w", err)
+	}
+	return t, nil
+}
+
+// UpdateTenant changes an organisation's own details.
+//
+// The slug is not editable. It appears in the consent permalinks a data subject
+// was shown, and a document whose address changes afterwards is no longer the
+// evidence it was cited as.
+// onUpdated, when supplied, runs inside the same transaction with the name the
+// organisation had before. It exists so the audit entry commits with the change
+// or not at all.
+func (s *Store) UpdateTenant(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	name string,
+	settings map[string]any,
+	onUpdated func(pgx.Tx, string) error,
+) error {
+	const q = `UPDATE iam.tenants SET name = $2, settings = $3 WHERE id = $1 RETURNING (SELECT name FROM iam.tenants WHERE id = $1)`
+
+	err := s.db.InTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
+		var before string
+		if err := tx.QueryRow(ctx, q, tenantID, name, settings).Scan(&before); err != nil {
+			if postgres.IsNoRows(err) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		if onUpdated != nil {
+			return onUpdated(tx, before)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("updating organisation: %w", err)
+	}
+	return nil
+}

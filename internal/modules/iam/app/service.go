@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
+	"github.com/collectr/collectr/internal/contracts"
 	"github.com/collectr/collectr/internal/modules/iam/domain"
 	"github.com/collectr/collectr/internal/modules/iam/store"
 	"github.com/collectr/collectr/internal/platform/authn"
@@ -47,7 +49,11 @@ type Service struct {
 	baseURL  string
 	linkHost string
 	mfaGrace time.Duration
+	audit    contracts.AuditWriter
 }
+
+// SetAudit attaches the trail organisation changes are recorded in.
+func (s *Service) SetAudit(w contracts.AuditWriter) { s.audit = w }
 
 // Deps are the Service's collaborators.
 type Deps struct {
@@ -431,4 +437,34 @@ func slugify(name string) string {
 		s = "org-" + uuid.NewString()[:8]
 	}
 	return s
+}
+
+// Organisation reads the tenant's own record.
+func (s *Service) Organisation(ctx context.Context, tenantID uuid.UUID) (store.Tenant, error) {
+	return s.store.GetTenant(ctx, tenantID)
+}
+
+// UpdateOrganisation changes what the organisation may change about itself.
+//
+// Audited, in the same transaction. The name is printed on the consent notice
+// as the party collecting the data, so renaming it changes who the next
+// respondent is told they are dealing with -- and a controller that can change
+// its own name on a legal notice with no record of having done so is the kind
+// of gap this product exists to close.
+func (s *Service) UpdateOrganisation(ctx context.Context, tenantID, actorID uuid.UUID, ipPrefix, name string, settings map[string]any) error {
+	if settings == nil {
+		settings = map[string]any{}
+	}
+	return s.store.UpdateTenant(ctx, tenantID, name, settings, func(tx pgx.Tx, before string) error {
+		if s.audit == nil || before == name {
+			return nil
+		}
+		return s.audit.Write(ctx, tx, contracts.AuditEntry{
+			TenantID: tenantID,
+			Actor:    contracts.AuditActor{Type: "user", ID: actorID.String(), IPPrefix: ipPrefix},
+			Action:   "org.renamed",
+			Target:   map[string]any{"tenant_id": tenantID},
+			Payload:  map[string]any{"from": before, "to": name},
+		})
+	})
 }
