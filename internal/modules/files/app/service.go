@@ -47,6 +47,16 @@ func NewService(s *store.Store, objects storage.Storage, env *crypto.Envelope, l
 	return &Service{store: s, objects: objects, env: env, log: log}
 }
 
+// Locate returns one attachment's metadata for an operator in its tenant.
+//
+// Metadata only: no bytes and no key unwrapping. Minting a download link should
+// not decrypt the file, because most mints are never followed by a fetch -- an
+// operator opening a list of twelve attachments wants twelve links, not twelve
+// decryptions.
+func (s *Service) Locate(ctx context.Context, tenantID, fileID uuid.UUID) (store.File, error) {
+	return s.store.GetInTenant(ctx, tenantID, fileID)
+}
+
 // UploadInput describes an incoming attachment.
 type UploadInput struct {
 	TenantID      uuid.UUID

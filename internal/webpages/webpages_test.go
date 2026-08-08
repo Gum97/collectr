@@ -339,8 +339,8 @@ func TestSqueezeKeepsTheStylesheetIntact(t *testing.T) {
 	// renders unstyled controls on a page nobody can debug from.
 	for _, class := range []string{
 		".cf", ".cf-field", ".cf-label", ".cf-req", ".cf-help", ".cf-input",
-		".cf-options", ".cf-option", ".cf-rating", ".cf-star", ".cf-consent",
-		".cf-doc", ".cf-status", ".cf-submit",
+		".cf-error", ".cf-options", ".cf-option", ".cf-rating", ".cf-star",
+		".cf-consent", ".cf-doc", ".cf-status", ".cf-submit",
 	} {
 		if !strings.Contains(out, class+" ") && !strings.Contains(out, class+":") &&
 			!strings.Contains(out, class+"[") && !strings.Contains(out, class+",") {

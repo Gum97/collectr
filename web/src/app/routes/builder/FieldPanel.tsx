@@ -10,6 +10,7 @@
  */
 import { useState } from 'react'
 import type { Action, Condition, FieldID, Rule } from '../../../shared/engine'
+import { FORMATS } from '../../../shared/format'
 import { Field as FormField, SensitiveTag } from '../../components/ui'
 import {
   ACTIONS,
@@ -170,6 +171,67 @@ export function FieldPanel({ schema, fieldId, readOnly, onApply, onSelect }: Pro
   )
 }
 
+/**
+ * The min/max pair, for a date or for a numeric format.
+ *
+ * Both are stored as strings, and an empty string is erased rather than kept.
+ * A stored "" would be a bound the validator treats as absent but the operator
+ * sees as set to nothing -- and min/max on a field that supports neither is a
+ * publish-time error, so a leftover empty value would block the release.
+ */
+function Bounds({
+  schema,
+  fieldId,
+  field,
+  readOnly,
+  onApply,
+  date = false,
+}: {
+  schema: DraftSchema
+  fieldId: FieldID
+  field: { min?: string; max?: string }
+  readOnly: boolean
+  onApply: (next: DraftSchema) => void
+  date?: boolean
+}) {
+  const set = (key: 'min' | 'max') => (e: { target: { value: string } }) =>
+    onApply(updateField(schema, fieldId, { [key]: e.target.value || undefined }))
+
+  const bad =
+    Boolean(field.min) && Boolean(field.max) &&
+    (date ? field.min! > field.max! : Number(field.min) > Number(field.max))
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-2">
+        <FormField label={date ? 'Từ ngày' : 'Nhỏ nhất'}>
+          <input
+            className="input"
+            type={date ? 'date' : 'number'}
+            value={field.min ?? ''}
+            disabled={readOnly}
+            onChange={set('min')}
+          />
+        </FormField>
+        <FormField label={date ? 'Đến ngày' : 'Lớn nhất'}>
+          <input
+            className="input"
+            type={date ? 'date' : 'number'}
+            value={field.max ?? ''}
+            disabled={readOnly}
+            onChange={set('max')}
+          />
+        </FormField>
+      </div>
+      {bad ? (
+        <p className="text-meta text-overdue">
+          Khoảng này không có giá trị nào lọt vào — mọi câu trả lời sẽ bị từ chối.
+        </p>
+      ) : null}
+    </>
+  )
+}
+
 /* --------------------------------------------------------- type-specific bits */
 
 function TypeSettings({
@@ -262,14 +324,63 @@ function TypeSettings({
   }
 
   if (field.type === 'text') {
+    const spec = field.format ? FORMATS[field.format] : undefined
     return (
-      <Check
-        label="Nhiều dòng"
-        checked={Boolean(field.multiline)}
-        disabled={readOnly}
-        onChange={(v) => onApply(updateField(schema, fieldId, { multiline: v }))}
-      />
+      <>
+        <Check
+          label="Nhiều dòng"
+          checked={Boolean(field.multiline)}
+          disabled={readOnly}
+          onChange={(v) => onApply(updateField(schema, fieldId, { multiline: v }))}
+        />
+        <FormField
+          label="Định dạng"
+          hint="Danh sách cố định, không phải ô nhập regex: mẫu do người dùng viết sẽ chạy trong trình duyệt của người điền form, và một mẫu quay lui vô hạn sẽ treo máy họ."
+        >
+          <select
+            className="input"
+            value={field.format ?? ''}
+            disabled={readOnly || Boolean(field.multiline)}
+            onChange={(e) =>
+              // Bounds are cleared with the format. Leaving min="0" behind on a
+              // field switched to email is a check that silently stops running,
+              // and the schema validator would then refuse to publish.
+              onApply(
+                updateField(schema, fieldId, {
+                  format: e.target.value || undefined,
+                  min: undefined,
+                  max: undefined,
+                }),
+              )
+            }
+          >
+            <option value="">Chữ tự do</option>
+            {Object.entries(FORMATS).map(([key, f]) => (
+              <option key={key} value={key}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </FormField>
+        {field.multiline && field.format ? (
+          <p className="text-meta text-overdue">
+            Ô nhiều dòng không giữ được một giá trị đơn — bỏ “Nhiều dòng” hoặc bỏ định dạng,
+            nếu không bản nháp sẽ không xuất bản được.
+          </p>
+        ) : null}
+        {spec ? (
+          <p className="text-meta text-muted">
+            Người điền sai sẽ thấy: “{spec.hint}”. Máy chủ kiểm lại khi nhận bài gửi — kiểm ở
+            trình duyệt thôi thì chỉ là lời khuyên.
+          </p>
+        ) : null}
+        {spec?.numeric ? <Bounds {...{ schema, fieldId, field, readOnly, onApply }} /> : null}
+      </>
     )
+  }
+
+  if (field.type === 'date') {
+    return <Bounds {...{ schema, fieldId, field, readOnly, onApply }} date />
   }
 
   if (field.type === 'file') {

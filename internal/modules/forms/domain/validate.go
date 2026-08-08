@@ -3,7 +3,9 @@ package domain
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Issue is one problem found in a draft schema.
@@ -256,6 +258,7 @@ func validateField(id FieldID, f Field) []Issue {
 		// in a way that reads as a rendering fault rather than a missing label.
 		bad("field %q has no label, so nobody can tell what it is asking", id)
 	}
+	issues = append(issues, validateFormat(id, f)...)
 	if f.Identifier && f.PII == "" {
 		bad("field %q identifies the data subject, so it must declare what personal data it holds", id)
 	}
@@ -274,6 +277,72 @@ func validateField(id FieldID, f Field) []Issue {
 				"field %q identifies the data subject but is not marked sensitive, "+
 					"so it is stored and indexed in the clear", id),
 		})
+	}
+	return issues
+}
+
+// validateFormat checks a field's format and bounds at publish time.
+//
+// Every problem here is one that costs a submission rather than raising an
+// error: a bound the wrong way round rejects every answer, and a format on a
+// field that has no text box is simply ignored, so the operator believes a check
+// is running that is not.
+func validateFormat(id FieldID, f Field) []Issue {
+	var issues []Issue
+	bad := func(format string, args ...any) {
+		issues = append(issues, Issue{
+			Code: IssueBadFieldConfig, Severity: SeverityError, Target: string(id),
+			Message: fmt.Sprintf(format, args...),
+		})
+	}
+
+	if f.Format != "" {
+		if f.Type != TypeText {
+			bad("field %q sets a format but is a %s, where nothing types free text",
+				id, f.Type)
+		} else if !KnownFormat(f.Format) {
+			bad("field %q has unknown format %q", id, f.Format)
+		} else if f.Multiline {
+			// A paragraph box holding a single tax code is a contradiction the
+			// respondent resolves by pressing Enter, and then the answer fails.
+			bad("field %q is multiline and also holds a %q format, which is a single value",
+				id, f.Format)
+		}
+	}
+
+	if f.Min == "" && f.Max == "" {
+		return issues
+	}
+
+	switch {
+	case f.Type == TypeDate:
+		for label, v := range map[string]string{"min": f.Min, "max": f.Max} {
+			if v == "" {
+				continue
+			}
+			if _, err := time.Parse(time.DateOnly, v); err != nil {
+				bad("field %q has %s = %q, which is not a date in YYYY-MM-DD form", id, label, v)
+			}
+		}
+		if f.Min != "" && f.Max != "" && f.Min > f.Max {
+			bad("field %q accepts dates from %s to %s, a range no date is in", id, f.Min, f.Max)
+		}
+	case FormatNumeric(f.Format):
+		lo, loErr := strconv.ParseFloat(f.Min, 64)
+		hi, hiErr := strconv.ParseFloat(f.Max, 64)
+		if f.Min != "" && loErr != nil {
+			bad("field %q has min = %q, which is not a number", id, f.Min)
+		}
+		if f.Max != "" && hiErr != nil {
+			bad("field %q has max = %q, which is not a number", id, f.Max)
+		}
+		if loErr == nil && hiErr == nil && lo > hi {
+			bad("field %q accepts values from %s to %s, a range no number is in", id, f.Min, f.Max)
+		}
+	default:
+		// Silently ignored otherwise, which is the case worth naming: someone
+		// set a bound expecting it to do something.
+		bad("field %q sets min/max, but they only apply to a date or a numeric format", id)
 	}
 	return issues
 }

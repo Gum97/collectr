@@ -124,8 +124,17 @@ type Field struct {
 	Accept    []string `json:"accept,omitempty"`
 	MaxMB     int      `json:"max_mb,omitempty"`
 	Multiline bool     `json:"multiline,omitempty"`
-	Min       string   `json:"min,omitempty"`
-	Max       string   `json:"max,omitempty"`
+
+	// Format holds a text field to one of the named formats in format.go.
+	// Empty means any text.
+	Format string `json:"format,omitempty"`
+
+	// Min and Max bound the answer: dates in YYYY-MM-DD form, and numbers for
+	// the numeric formats. Both are strings so a date and a number can share
+	// them without a type union, and so an empty value means "no bound" rather
+	// than colliding with a legitimate zero.
+	Min string `json:"min,omitempty"`
+	Max string `json:"max,omitempty"`
 }
 
 // Option is one choice within a choice, multi_choice or dropdown field.

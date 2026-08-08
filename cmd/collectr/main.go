@@ -335,6 +335,7 @@ func run() error {
 	iamHandler.RegisterProjects(admin)
 	iamHandler.RegisterAPIKeys(admin)
 	iamHandler.RegisterRecoveryAdmin(admin)
+	fileHandler.SetAudit(db, auditWriter)
 	fileHandler.RegisterAdmin(admin)
 	exportHandler.RegisterAdmin(admin)
 	webhookHandler.RegisterAdmin(admin)

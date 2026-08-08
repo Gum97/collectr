@@ -45,6 +45,9 @@ export interface Field {
   /** Megabytes, per the Go tag -- not bytes. */
   max_mb?: number
   multiline?: boolean
+  /** One of the named formats in format.ts. Empty means any text. */
+  format?: string
+  /** Bounds: YYYY-MM-DD for a date, a number for the numeric formats. */
   min?: string
   max?: string
 }

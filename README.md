@@ -35,24 +35,25 @@ Thiết kế bám theo **Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15** 
 
 ![Trình dựng biểu mẫu](docs/images/builder.png)
 
-<table>
-<tr>
-<td width="50%"><img src="docs/images/dsr.png" alt="Hàng đợi yêu cầu chủ thể dữ liệu"></td>
-<td width="50%"><img src="docs/images/roles.png" alt="Ma trận quyền của 8 vai trò"></td>
-</tr>
-<tr>
-<td><b>Hàng đợi quyền chủ thể dữ liệu</b><br><sub>Hạn gần nhất lên đầu. Quá hạn là rủi ro xử phạt theo NĐ 356/2025, không phải chỉ số nội bộ — nên nó có màu riêng.</sub></td>
-<td><b>8 vai trò, 16 quyền</b><br><sub>Ô <code>✕</code> là <i>cố tình không cấp</i>: DPO giám sát nhưng không xuất được dữ liệu. Ranh giới ai đó vẽ có chủ đích, không phải chỗ trống.</sub></td>
-</tr>
-<tr>
-<td><img src="docs/images/links.png" alt="Link rút gọn và QR"></td>
-<td align="center"><img src="docs/images/public-form.png" alt="Trang điền form trên điện thoại" width="300"></td>
-</tr>
-<tr>
-<td><b>Link rút gọn &amp; QR</b><br><sub>Hai con số lượt bấm cạnh nhau vì chúng đến từ hai nguồn phủ hai khoảng thời gian khác nhau. Cột "dải mạng" <b>không phải</b> số người.</sub></td>
-<td><b>Trang điền form</b><br><sub>2,6 KB gzip, không framework. Đây là trang khách hàng thật đứng đợi, và là mẫu số của chính tỉ lệ hoàn thành mà sản phẩm này báo cáo.</sub></td>
-</tr>
-</table>
+<sub>Trình dựng biểu mẫu: sơ đồ nhánh bên trái, câu hỏi ở giữa, thuộc tính dữ liệu cá nhân bên phải.</sub>
+
+![Hàng đợi yêu cầu chủ thể dữ liệu](docs/images/dsr.png)
+
+**Hàng đợi quyền chủ thể dữ liệu** — hạn gần nhất lên đầu. Quá hạn là rủi ro xử phạt theo NĐ 356/2025, không phải chỉ số nội bộ, nên nó có màu riêng.
+
+![Ma trận quyền của 8 vai trò](docs/images/roles.png)
+
+**8 vai trò, 16 quyền** — ô `✕` là *cố tình không cấp*: DPO giám sát nhưng không xuất được dữ liệu. Ranh giới ai đó vẽ có chủ đích, không phải chỗ trống.
+
+![Link rút gọn và QR](docs/images/links.png)
+
+**Link rút gọn & QR** — hai con số lượt bấm cạnh nhau vì chúng đến từ hai nguồn phủ hai khoảng thời gian khác nhau. Cột "dải mạng" **không phải** số người.
+
+<div align="center">
+<img src="docs/images/public-form.png" alt="Trang điền form trên điện thoại" width="320">
+</div>
+
+**Trang điền form** — 2,6 KB gzip, không framework. Đây là trang khách hàng thật đứng đợi, và là mẫu số của chính tỉ lệ hoàn thành mà sản phẩm này báo cáo.
 
 ## Tính năng
 

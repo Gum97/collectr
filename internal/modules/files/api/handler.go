@@ -3,6 +3,7 @@ package api
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"errors"
 	"mime"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/collectr/collectr/internal/modules/files/app"
 	"github.com/collectr/collectr/internal/modules/files/domain"
 	"github.com/collectr/collectr/internal/platform/httpx"
+	"github.com/collectr/collectr/internal/platform/postgres"
 	"github.com/collectr/collectr/internal/platform/storage"
 )
 
@@ -25,6 +27,8 @@ type Handler struct {
 	pepper   []byte
 	fileHost string
 	lister   AttachmentLister
+	db       *postgres.DB
+	audit    contracts.AuditWriter
 }
 
 // New returns a Handler. fileHost is the origin attachments are served from.
@@ -132,6 +136,20 @@ func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httpx.Logger(r.Context()).Error("reading attachment", "error", err)
 		httpx.Error(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
+		return
+	}
+
+	// The signature covers the storage key and the expiry -- not id. Without
+	// this check the two are independent: a holder of any one valid link could
+	// keep its signed key and swap id for another file's, and the HMAC would
+	// still verify. Open resolves by id alone with no tenant scope, so that
+	// reads any attachment in any tenant until the link expires.
+	//
+	// Comparing the record's own key back to the signed one binds them. Done
+	// here rather than by widening the MAC because the ObjectStore interface
+	// signs keys without knowing what a file id is.
+	if subtle.ConstantTimeCompare([]byte(f.StorageKey), []byte(key)) != 1 {
+		httpx.Error(w, r, http.StatusForbidden, "invalid_signature", "This link is not valid")
 		return
 	}
 

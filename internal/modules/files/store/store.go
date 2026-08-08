@@ -93,6 +93,42 @@ func (s *Store) ResolvePublic(ctx context.Context, id uuid.UUID) (File, error) {
 	return f, nil
 }
 
+// GetInTenant loads one file's metadata within a tenant.
+//
+// Separate from ResolvePublic, which answers "which file is this id" for a
+// respondent who has not identified themselves to anybody. This is the operator
+// path, and an operator always belongs to exactly one tenant, so scoping is
+// available here and must be used.
+//
+// tenant_id appears in the WHERE clause as well as in InTenantTx. Row-level
+// security already restricts the rows, but the export path once shipped a
+// cross-tenant read for precisely this reason: it passed the tenant to the
+// transaction and not to the query, and the worker's role bypasses RLS. A query
+// that is correct on its own does not depend on which role runs it.
+func (s *Store) GetInTenant(ctx context.Context, tenantID, id uuid.UUID) (File, error) {
+	const q = `
+		SELECT id, tenant_id, project_id, form_version_id, coalesce(field_id, ''),
+		       storage_key, original_name, content_type, size_bytes, dek_wrapped,
+		       status, submission_id, created_at
+		FROM files.files
+		WHERE id = $1 AND tenant_id = $2 AND status <> 'erased'`
+
+	var f File
+	err := s.db.InTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, q, id, tenantID).Scan(
+			&f.ID, &f.TenantID, &f.ProjectID, &f.FormVersionID, &f.FieldID,
+			&f.StorageKey, &f.OriginalName, &f.ContentType, &f.SizeBytes,
+			&f.DEKWrapped, &f.Status, &f.SubmissionID, &f.CreatedAt)
+	})
+	if postgres.IsNoRows(err) {
+		return File{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return File{}, fmt.Errorf("loading file: %w", err)
+	}
+	return f, nil
+}
+
 // Bind attaches files to a submission inside the caller's transaction.
 //
 // The update is conditional on the file still being unattached, so the same

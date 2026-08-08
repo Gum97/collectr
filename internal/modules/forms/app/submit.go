@@ -487,6 +487,10 @@ func validateValue(f domain.Field, v any) string {
 		if len(s) > 10_000 {
 			return "is too long"
 		}
+		// Re-checked here even though the browser checked it already. The client
+		// runs the same formats, but a submission is an HTTP request and anyone
+		// can make one -- a format enforced only in the page is a suggestion.
+		return domain.CheckFormat(f, s)
 	case domain.TypeDate:
 		s, ok := v.(string)
 		if !ok {
@@ -496,6 +500,7 @@ func validateValue(f domain.Field, v any) string {
 			if _, err := time.Parse(time.DateOnly, s); err != nil {
 				return "must be a date in YYYY-MM-DD form"
 			}
+			return domain.CheckFormat(f, s)
 		}
 	}
 	return ""

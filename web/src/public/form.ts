@@ -11,6 +11,7 @@
  * hiding a field stops it being asked, not being accepted.
  */
 import { evaluate, type Answers, type Field, type Schema } from '../shared/engine'
+import { checkFormat, inputModeFor } from '../shared/format'
 
 /**
  * Exactly what GET /api/pub/forms/{public_id} returns.
@@ -228,7 +229,15 @@ function renderField(
       input.type = 'date'
       input.id = id
       input.className = 'cf-input'
-      input.addEventListener('change', () => commit(input.value, true))
+      // The native picker greys out what the server would refuse anyway, so the
+      // bound is visible before the mistake instead of after it.
+      if (field.min) input.min = field.min
+      if (field.max) input.max = field.max
+      const note = hintLine(wrap)
+      input.addEventListener('change', () => {
+        note(checkFormat(field, input.value))
+        commit(input.value, true)
+      })
       wrap.append(input)
       break
     }
@@ -249,14 +258,48 @@ function renderField(
       if (input instanceof HTMLInputElement) input.type = 'text'
       input.id = id
       input.className = 'cf-input'
+      // The keyboard, not the validation. A phone asked for twelve digits and
+      // given a QWERTY layout is a form people abandon.
+      const mode = inputModeFor(field)
+      if (mode) input.inputMode = mode
       input.value = typeof answers[id] === 'string' ? (answers[id] as string) : ''
-      input.addEventListener('input', () => commit(input.value, false))
-      input.addEventListener('blur', () => commit(input.value, true))
+
+      const note = hintLine(wrap)
+      input.addEventListener('input', () => {
+        // Cleared while typing, never raised. Telling somebody their email is
+        // malformed at the third character is telling them off for not having
+        // finished.
+        note('')
+        commit(input.value, false)
+      })
+      input.addEventListener('blur', () => {
+        note(checkFormat(field, input.value))
+        commit(input.value, true)
+      })
       wrap.append(input)
     }
   }
 
   return wrap
+}
+
+/**
+ * Appends an error line to a field and returns a setter for it.
+ *
+ * The element is created once and only its text changes, so setting a message
+ * never re-runs draw(). draw() rebuilds the question list, which would destroy
+ * the input the respondent is still standing in -- the bug that once ate a text
+ * answer on every blur.
+ */
+function hintLine(wrap: HTMLElement): (msg: string) => void {
+  const p = document.createElement('p')
+  p.className = 'cf-error'
+  p.hidden = true
+  wrap.append(p)
+  return (msg: string) => {
+    p.textContent = msg
+    p.hidden = msg === ''
+  }
 }
 
 function choiceRow(

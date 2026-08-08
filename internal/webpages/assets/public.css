@@ -204,6 +204,16 @@ a:hover { color: var(--accent-dark); }
 
 textarea.cf-input { min-height: 6rem; resize: vertical; }
 
+/* A field the respondent must fix. Uses the legal red because on this page it
+   is the only red there is -- the admin side reserves it for statutory
+   consequence, but nothing here carries one. */
+.cf-error {
+  margin: 6px 0 0;
+  color: var(--legal, #a8432a);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .cf-options { display: flex; flex-direction: column; gap: 8px; }
 
 .cf-option {

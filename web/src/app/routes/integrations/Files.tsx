@@ -22,12 +22,12 @@ import {
   PageHeader,
   SensitiveTag,
   StatusPill,
+  Table,
+  Td,
+  Th,
+  Tr,
+  dateTime,
 } from '../../components/ui'
-
-/** BACKEND: there is no admin endpoint that lists received attachments. When one
- *  exists (GET /api/v1/forms/{id}/files), flip this and the section below stops
- *  explaining itself and starts showing data. */
-const FILE_LIST_READY = true
 
 interface FormMeta {
   id: string
@@ -358,54 +358,143 @@ function FieldConfig({
   )
 }
 
+/** One received attachment, as GET /api/v1/forms/{id}/files returns it. */
+interface Attachment {
+  id: string
+  field_id: string
+  original_name: string
+  content_type: string
+  size_bytes: number
+  status: string
+  submission_id: string | null
+  encrypted: boolean
+  created_at: string
+}
+
+/** What POST /api/v1/files/{id}/download-url hands back. */
+interface MintedLink {
+  url: string
+  filename: string
+  expires_at: string
+}
+
+function bytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
 /**
  * The received-files half of the screen.
  *
- * Nothing is fetched: the management API has no attachment listing, only the
- * public upload and a signed download link. Rendering an empty table would say
- * "no files", which is a claim this screen cannot make.
+ * The download link is minted per file, on click, rather than arriving with the
+ * listing. Shipping a fetchable URL on every row would turn opening this tab
+ * into a bulk read of every document on it, recorded as one audit line or none;
+ * the mint endpoint writes a `submission.read_file` entry naming the operator
+ * before it returns anything.
  */
 function ReceivedFiles({ formId }: { formId: string }) {
+  const files = useQuery({
+    queryKey: ['form-files', formId],
+    queryFn: () => api.get<{ data: Attachment[] }>(`/api/v1/forms/${formId}/files`),
+  })
+
+  // Not a redirect and not window.open: the response carries a filename, and the
+  // browser's popup blocker eats a window opened from an async callback. An
+  // anchor with `download` clicked synchronously after the await survives both.
+  const mint = useMutation({
+    mutationFn: (id: string) => api.post<MintedLink>(`/api/v1/files/${id}/download-url`),
+    onSuccess: (link) => {
+      const a = document.createElement('a')
+      a.href = link.url
+      a.download = link.filename
+      a.rel = 'noopener'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+    },
+  })
+
+  if (files.isPending) return <Card title="Tệp đã nhận"><Loading /></Card>
+  if (files.error) {
+    return (
+      <Card title="Tệp đã nhận">
+        <ErrorBanner error={files.error} retry={() => files.refetch()} />
+      </Card>
+    )
+  }
+
+  const rows = files.data?.data ?? []
+
   return (
     <Card title="Tệp đã nhận" aside="link tải ký hạn 10 phút">
-      {!FILE_LIST_READY ? (
+      {rows.length === 0 ? (
         <Empty
-          title="Chưa đọc được danh sách tệp"
-          hint={
+          title="Chưa nhận tệp nào"
+          hint="Biểu mẫu này chưa có tệp đính kèm nào được gửi lên."
+        />
+      ) : (
+        <Table
+          head={
             <>
-              API quản trị hiện chỉ có đường nhận tệp (
-              <span className="font-mono text-meta">POST /api/pub/forms/{'{public_id}'}/uploads</span>
-              ) và đường tải bằng URL ký (
-              <span className="font-mono text-meta">GET /api/pub/files/{'{key}'}</span>), chưa
-              có đường liệt kê. Trống ở đây nghĩa là{' '}
-              <span className="font-semibold">chưa hỏi được</span>, không phải biểu mẫu chưa nhận
-              tệp nào — hai chuyện khác hẳn nhau khi đang trả lời một yêu cầu xoá dữ liệu.
-              <br />
-              Cần <span className="font-mono text-meta">GET /api/v1/forms/{formId}/files</span>{' '}
-              trả về tên tệp, kiểu, kích thước, mã lượt gửi, người gửi (che một phần), ngày nhận,
-              trạng thái (<span className="font-mono text-meta">pending/bound/erased</span>) và
-              URL tải đã ký.
+              <Th>Tên tệp</Th>
+              <Th>Câu hỏi</Th>
+              <Th>Kiểu thật</Th>
+              <Th className="text-right">Cỡ</Th>
+              <Th>Lượt gửi</Th>
+              <Th>Nhận lúc</Th>
+              <Th>Trạng thái</Th>
+              <Th />
             </>
           }
-        />
-      ) : null}
+        >
+          {rows.map((f) => (
+            <Tr key={f.id}>
+              <Td className="font-medium">{f.original_name}</Td>
+              <Td className="font-mono text-meta text-muted">{f.field_id || '—'}</Td>
+              {/* The type the server proved by reading the magic bytes, not the
+                  extension the uploader chose. */}
+              <Td className="font-mono text-meta text-muted">{f.content_type}</Td>
+              <Td className="text-right tabular-nums">{bytes(f.size_bytes)}</Td>
+              <Td className="font-mono text-meta">
+                {f.submission_id ? f.submission_id.slice(0, 8) : '—'}
+              </Td>
+              <Td className="text-meta text-muted">{dateTime(f.created_at)}</Td>
+              <Td>
+                <StatusPill tone={f.status === 'bound' ? 'ok' : 'neutral'}>{f.status}</StatusPill>
+              </Td>
+              <Td className="text-right">
+                <button
+                  type="button"
+                  className="btn py-0.5 text-meta"
+                  disabled={mint.isPending}
+                  onClick={() => mint.mutate(f.id)}
+                >
+                  Tải
+                </button>
+              </Td>
+            </Tr>
+          ))}
+        </Table>
+      )}
+
+      {mint.error ? <div className="mt-2"><ErrorBanner error={mint.error} /></div> : null}
 
       <div className="mt-3 grid gap-1.5 text-meta text-muted">
         <p>
-          Khi danh sách hoạt động, mỗi dòng sẽ hiện: tên tệp · kiểu thật · kích thước · mã lượt
-          gửi · người gửi (che một phần, ví dụ{' '}
-          <span className="font-mono">ngu***@acme.vn</span>) · ngày nhận · nút tải.
+          Mỗi lần bấm “Tải” ghi một dòng <span className="font-mono">submission.read_file</span>{' '}
+          vào nhật ký kèm tên người bấm. Link ký hết hạn sau 10 phút và là{' '}
+          <span className="font-semibold">chứng chỉ mang theo</span> — ai cầm được link trong
+          10 phút đó đều tải được, nên đừng dán nó vào chat.
         </p>
         <p>
-          Link tải được ký và hết hạn sau 10 phút, và tệp luôn được trả về dưới dạng tải xuống,
-          không bao giờ mở trực tiếp trong trình duyệt — một PDF hay ảnh mở inline từ cùng nguồn
-          với phiên đăng nhập là một lỗ XSS.
+          Tệp luôn trả về dưới dạng tải xuống, không bao giờ mở trực tiếp trong trình duyệt — một
+          PDF hay ảnh mở inline từ cùng nguồn với phiên đăng nhập là một lỗ XSS.
         </p>
         <p>
-          Tệp đã bị xoá theo yêu cầu của chủ thể vẫn để lại một dòng ghi rõ{' '}
-          <span className="text-overdue">“đã xoá theo yêu cầu DSR #…”</span> kèm ngày, và nút tải
-          chuyển thành “Không còn”. Xoá dòng đi thì không còn cách nào chứng minh đã thực hiện
-          việc xoá.
+          Tệp đã bị xoá theo yêu cầu chủ thể không còn trong danh sách này, nhưng dòng{' '}
+          <span className="font-mono">dsr.erase</span> trong nhật ký vẫn chứng minh việc xoá đã
+          diễn ra. Khoá mã hoá bị huỷ nên byte còn lại là không đọc được.
         </p>
       </div>
     </Card>

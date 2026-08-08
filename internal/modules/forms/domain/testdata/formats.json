@@ -1,0 +1,70 @@
+{
+  "_comment": "Read unchanged by both internal/modules/forms/domain/format_test.go and web/src/shared/format.test.ts. Not copied into either: two files that agree until someone edits one of them are worse than none, because the disagreement shows up as a respondent whose valid answer is rejected by the server after the browser accepted it. `ok: true` means the value is accepted.",
+  "cases": [
+    { "name": "blank passes every format, required-ness is decided elsewhere", "field": { "type": "text", "format": "email" }, "value": "", "ok": true },
+    { "name": "whitespace only is blank", "field": { "type": "text", "format": "national_id" }, "value": "   ", "ok": true },
+
+    { "name": "plain email", "field": { "type": "text", "format": "email" }, "value": "ten@congty.vn", "ok": true },
+    { "name": "email with subdomain", "field": { "type": "text", "format": "email" }, "value": "a.b@mail.congty.com.vn", "ok": true },
+    { "name": "email with plus tag", "field": { "type": "text", "format": "email" }, "value": "ten+form@congty.vn", "ok": true },
+    { "name": "email is trimmed before checking", "field": { "type": "text", "format": "email" }, "value": "  ten@congty.vn  ", "ok": true },
+    { "name": "email without a dot in the domain", "field": { "type": "text", "format": "email" }, "value": "ten@congty", "ok": false },
+    { "name": "email without an at sign", "field": { "type": "text", "format": "email" }, "value": "ten.congty.vn", "ok": false },
+    { "name": "email with two at signs", "field": { "type": "text", "format": "email" }, "value": "a@b@c.vn", "ok": false },
+    { "name": "email with an inner space", "field": { "type": "text", "format": "email" }, "value": "ten @congty.vn", "ok": false },
+
+    { "name": "mobile number", "field": { "type": "text", "format": "phone_vn" }, "value": "0912345678", "ok": true },
+    { "name": "number written with spaces", "field": { "type": "text", "format": "phone_vn" }, "value": "091 234 5678", "ok": true },
+    { "name": "number written with dots", "field": { "type": "text", "format": "phone_vn" }, "value": "091.234.5678", "ok": true },
+    { "name": "number in +84 form", "field": { "type": "text", "format": "phone_vn" }, "value": "+84912345678", "ok": true },
+    { "name": "nine digits is one short", "field": { "type": "text", "format": "phone_vn" }, "value": "091234567", "ok": false },
+    { "name": "eleven digits is one long", "field": { "type": "text", "format": "phone_vn" }, "value": "09123456789", "ok": false },
+    { "name": "number not starting with zero", "field": { "type": "text", "format": "phone_vn" }, "value": "1912345678", "ok": false },
+    { "name": "letters in a phone number", "field": { "type": "text", "format": "phone_vn" }, "value": "091234567a", "ok": false },
+
+    { "name": "ten digit tax code", "field": { "type": "text", "format": "tax_code" }, "value": "0123456789", "ok": true },
+    { "name": "tax code with branch suffix", "field": { "type": "text", "format": "tax_code" }, "value": "0123456789-001", "ok": true },
+    { "name": "tax code written with spaces", "field": { "type": "text", "format": "tax_code" }, "value": "0123 456 789", "ok": true },
+    { "name": "nine digit tax code", "field": { "type": "text", "format": "tax_code" }, "value": "012345678", "ok": false },
+    { "name": "thirteen digits with no separator", "field": { "type": "text", "format": "tax_code" }, "value": "0123456789001", "ok": false },
+    { "name": "tax code with a two digit suffix", "field": { "type": "text", "format": "tax_code" }, "value": "0123456789-01", "ok": false },
+
+    { "name": "twelve digit national id", "field": { "type": "text", "format": "national_id" }, "value": "001234567890", "ok": true },
+    { "name": "national id written with spaces", "field": { "type": "text", "format": "national_id" }, "value": "001 234 567 890", "ok": true },
+    { "name": "the retired nine digit CMND is refused", "field": { "type": "text", "format": "national_id" }, "value": "001234567", "ok": false },
+    { "name": "thirteen digits", "field": { "type": "text", "format": "national_id" }, "value": "0012345678901", "ok": false },
+    { "name": "letters in a national id", "field": { "type": "text", "format": "national_id" }, "value": "00123456789X", "ok": false },
+
+    { "name": "https url", "field": { "type": "text", "format": "url" }, "value": "https://congty.vn/trang", "ok": true },
+    { "name": "http url", "field": { "type": "text", "format": "url" }, "value": "http://congty.vn", "ok": true },
+    { "name": "url without a scheme", "field": { "type": "text", "format": "url" }, "value": "congty.vn", "ok": false },
+    { "name": "javascript scheme is not a url", "field": { "type": "text", "format": "url" }, "value": "javascript:alert(1)", "ok": false },
+
+    { "name": "whole number", "field": { "type": "text", "format": "number" }, "value": "42", "ok": true },
+    { "name": "decimal with a dot", "field": { "type": "text", "format": "number" }, "value": "3.5", "ok": true },
+    { "name": "decimal with a comma, the Vietnamese separator", "field": { "type": "text", "format": "number" }, "value": "3,5", "ok": true },
+    { "name": "negative number", "field": { "type": "text", "format": "number" }, "value": "-7", "ok": true },
+    { "name": "number with a trailing letter", "field": { "type": "text", "format": "number" }, "value": "42kg", "ok": false },
+    { "name": "empty decimal", "field": { "type": "text", "format": "number" }, "value": "3.", "ok": false },
+
+    { "name": "integer", "field": { "type": "text", "format": "integer" }, "value": "12", "ok": true },
+    { "name": "a decimal is not an integer", "field": { "type": "text", "format": "integer" }, "value": "12.5", "ok": false },
+
+    { "name": "percentage inside its range", "field": { "type": "text", "format": "integer", "min": "0", "max": "100" }, "value": "40", "ok": true },
+    { "name": "percentage at the lower bound", "field": { "type": "text", "format": "integer", "min": "0", "max": "100" }, "value": "0", "ok": true },
+    { "name": "percentage at the upper bound", "field": { "type": "text", "format": "integer", "min": "0", "max": "100" }, "value": "100", "ok": true },
+    { "name": "percentage over the upper bound", "field": { "type": "text", "format": "integer", "min": "0", "max": "100" }, "value": "101", "ok": false },
+    { "name": "percentage under the lower bound", "field": { "type": "text", "format": "integer", "min": "0", "max": "100" }, "value": "-1", "ok": false },
+    { "name": "min alone still binds", "field": { "type": "text", "format": "number", "min": "10" }, "value": "9", "ok": false },
+    { "name": "max alone still binds", "field": { "type": "text", "format": "number", "max": "10" }, "value": "11", "ok": false },
+    { "name": "a comma decimal is compared as a number, not as text", "field": { "type": "text", "format": "number", "max": "10" }, "value": "9,5", "ok": true },
+
+    { "name": "date inside its range", "field": { "type": "date", "min": "2020-01-01", "max": "2030-12-31" }, "value": "2025-06-15", "ok": true },
+    { "name": "date on the lower bound", "field": { "type": "date", "min": "2020-01-01" }, "value": "2020-01-01", "ok": true },
+    { "name": "date before the lower bound", "field": { "type": "date", "min": "2020-01-01" }, "value": "2019-12-31", "ok": false },
+    { "name": "date after the upper bound", "field": { "type": "date", "max": "2030-12-31" }, "value": "2031-01-01", "ok": false },
+
+    { "name": "a field with no format accepts anything", "field": { "type": "text" }, "value": "bất kỳ chữ gì", "ok": true },
+    { "name": "an unknown format does not reject a real answer", "field": { "type": "text", "format": "khong_ton_tai" }, "value": "bất kỳ", "ok": true }
+  ]
+}
