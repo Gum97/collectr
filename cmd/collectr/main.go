@@ -256,6 +256,10 @@ func run() error {
 	})
 	dsrHandler := dsrapi.New(dsrSvc, sessionSigner, cfg.Env != "dev")
 	dsrAdminHandler := dsrapi.NewAdmin(db, dsrstore.New(db), auditWriter, cfg.DSRSLA)
+	// A subject whose record an employee corrected finds out from us, not by
+	// noticing later. Without this the endpoint's own reply promised a notice
+	// nobody sent.
+	dsrAdminHandler.SetNotifier(notifier, log, cfg.BaseURL)
 
 	exportSvc := exportsapp.NewService(exportsapp.Deps{
 		Store: exportsstore.New(db), Submissions: formStore,

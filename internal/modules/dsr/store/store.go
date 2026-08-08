@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"maps"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -292,6 +294,10 @@ type SubjectQuestion struct {
 	// and "my identity card", and the reader should be told which they are
 	// looking at.
 	Sensitive bool `json:"sensitive"`
+	// Identifier marks the question whose answer recognises the subject. It is
+	// the only address the system can reach them at: consent.data_subjects holds
+	// an HMAC of it and nothing reversible, by design.
+	Identifier bool `json:"identifier"`
 }
 
 // versionSchema is the slice of a form schema the portal needs.
@@ -361,9 +367,28 @@ func checkRectifiable(schema versionSchema, answers map[string]any) error {
 		if !known || q.Sensitive {
 			return domain.ErrForbidden
 		}
+		// An attachment answer is a reference -- {"file_id": "..."} -- not a
+		// value, and there is no upload in a rectification. Writing a string over
+		// it would leave the stored file with nothing pointing at it: the grid
+		// would show the typed text, the row in files.files would stay behind
+		// with no answer referencing it, and erasure driven by the answers would
+		// walk straight past it. Every part of that succeeds without an error.
+		//
+		// Correcting the wrong document means uploading the right one, which is a
+		// different operation than the one this function guards.
+		if q.Type == fieldTypeFile {
+			return domain.ErrForbidden
+		}
 	}
 	return nil
 }
+
+// fieldTypeFile is the schema's name for an attachment question.
+//
+// Spelled out here rather than imported: forms is a sibling module, and the
+// architecture test forbids reaching into it. The value is fixed by data
+// already written to form_versions, so it cannot drift without a migration.
+const fieldTypeFile = "file"
 
 // Rectifier identifies who is correcting a record, and on what footing.
 //
@@ -376,6 +401,18 @@ type Rectifier struct {
 	ChangedBy string
 	// Source is dsr_self_service or dsr_operator.
 	Source string
+	// Merge keeps answers the caller did not mention.
+	//
+	// The two paths supply different things and the write has to match. The
+	// portal shows a subject their whole record and returns all of it, so a
+	// field they cleared means "remove this" and a wholesale replace is right.
+	//
+	// An operator is on a call fixing one value. They never see the full record
+	// -- sensitive answers are masked and some columns may be hidden -- so a
+	// wholesale replace would silently blank every answer the screen could not
+	// send back, and would write the mask string itself into any it could.
+	// Nothing would error. The record would just quietly become wrong.
+	Merge bool
 }
 
 // SubjectRectifier is the data subject correcting their own record.
@@ -386,7 +423,7 @@ func SubjectRectifier(subjectID uuid.UUID) Rectifier {
 // OperatorRectifier is an employee correcting a record on the subject's behalf,
 // while fulfilling a recorded rectification request.
 func OperatorRectifier(userID uuid.UUID) Rectifier {
-	return Rectifier{ChangedBy: "user:" + userID.String(), Source: "dsr_operator"}
+	return Rectifier{ChangedBy: "user:" + userID.String(), Source: "dsr_operator", Merge: true}
 }
 
 // RectifySubmission corrects one submission in its own transaction.
@@ -433,6 +470,13 @@ func (s *Store) RectifyTx(ctx context.Context, tx pgx.Tx, tenantID, subjectID, s
 		return err
 	}
 
+	after := answers
+	if by.Merge {
+		after = make(map[string]any, len(before)+len(answers))
+		maps.Copy(after, before)
+		maps.Copy(after, answers)
+	}
+
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO forms.submission_revisions
 			(id, tenant_id, submission_id, answers_before, changed_by, change_source)
@@ -442,7 +486,7 @@ func (s *Store) RectifyTx(ctx context.Context, tx pgx.Tx, tenantID, subjectID, s
 		return fmt.Errorf("recording revision: %w", err)
 	}
 	if _, err := tx.Exec(ctx,
-		`UPDATE forms.submissions SET answers = $2 WHERE id = $1`, submissionID, answers,
+		`UPDATE forms.submissions SET answers = $2 WHERE id = $1`, submissionID, after,
 	); err != nil {
 		return fmt.Errorf("updating answers: %w", err)
 	}
@@ -563,4 +607,46 @@ func (s *Store) Restrict(ctx context.Context, tx pgx.Tx, subjectID uuid.UUID) (i
 		return 0, fmt.Errorf("restricting submissions: %w", err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+// ContactFor returns the address a submission's subject can be reached at.
+//
+// Read from the identifier answer rather than from consent.data_subjects: that
+// table stores an HMAC of the identifier and nothing reversible, which is what
+// stops it being usable as a directory. The answer itself is in the plaintext
+// column -- an identifier has to be a contact channel, and a contact channel
+// cannot be sealed under a key and still be usable to make contact.
+//
+// Returns an empty string when the form has no identifier question or the
+// answer is blank. Callers treat that as "cannot notify", never as an error:
+// failing a correction because a notice could not be addressed would leave the
+// wrong value on file, which is worse than a notice nobody receives.
+func (s *Store) ContactFor(ctx context.Context, tenantID, submissionID uuid.UUID) (string, error) {
+	const q = `
+		SELECT s.answers, v.schema
+		FROM forms.submissions s
+		JOIN forms.form_versions v ON v.id = s.form_version_id
+		WHERE s.id = $1`
+
+	var answers map[string]any
+	var schema versionSchema
+	err := s.db.InTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, q, submissionID).Scan(&answers, &schema)
+	})
+	if postgres.IsNoRows(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("reading contact for submission: %w", err)
+	}
+
+	for id, q := range schema.Fields {
+		if !q.Identifier {
+			continue
+		}
+		if v, ok := answers[id].(string); ok {
+			return strings.TrimSpace(v), nil
+		}
+	}
+	return "", nil
 }

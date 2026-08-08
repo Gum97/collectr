@@ -249,11 +249,16 @@ type Grid struct {
 
 // Row is one submission rendered for the grid.
 type Row struct {
-	ID          uuid.UUID       `json:"id"`
-	VersionNo   int             `json:"form_version"`
-	SubmittedAt time.Time       `json:"submitted_at"`
-	Status      string          `json:"status"`
-	Cells       map[string]Cell `json:"cells"`
+	ID          uuid.UUID `json:"id"`
+	VersionNo   int       `json:"form_version"`
+	SubmittedAt time.Time `json:"submitted_at"`
+	Status      string    `json:"status"`
+	// SubjectID is absent when the form asked for no identifier. Correcting a
+	// record on the subject's behalf is keyed by it, so the grid has to say
+	// whether the row has one: a button that fails on click is worse than a
+	// button that is not drawn.
+	SubjectID *uuid.UUID      `json:"subject_id,omitempty"`
+	Cells     map[string]Cell `json:"cells"`
 }
 
 // Cell is one answer with the state that explains an absent value.
@@ -322,7 +327,8 @@ func (s *Service) Submissions(ctx context.Context, tenantID, formID uuid.UUID, b
 		schema := schemaByID[sub.FormVersionID]
 		row := Row{
 			ID: sub.ID, VersionNo: sub.VersionNo, SubmittedAt: sub.SubmittedAt,
-			Status: sub.Status, Cells: make(map[string]Cell, len(columns)),
+			SubjectID: sub.SubjectID,
+			Status:    sub.Status, Cells: make(map[string]Cell, len(columns)),
 		}
 		for _, col := range columns {
 			field, inSchema := schema.Fields[col.FieldID]

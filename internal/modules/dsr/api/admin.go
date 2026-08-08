@@ -2,8 +2,10 @@ package api
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +16,7 @@ import (
 	"github.com/collectr/collectr/internal/modules/dsr/store"
 	"github.com/collectr/collectr/internal/platform/authn"
 	"github.com/collectr/collectr/internal/platform/httpx"
+	"github.com/collectr/collectr/internal/platform/notify"
 	"github.com/collectr/collectr/internal/platform/postgres"
 )
 
@@ -31,6 +34,21 @@ type AdminHandler struct {
 	// request on a subject's behalf. The deadline is stored on the request, so a
 	// later change to the configured SLA cannot move a clock already running.
 	sla time.Duration
+	// notifier tells the subject their record was changed by somebody else.
+	//
+	// Optional: a deployment with no SMTP still corrects records. Refusing the
+	// correction because the notice could not be sent would leave the wrong
+	// value on file, which is the worse of the two failures.
+	notifier notify.Notifier
+	log      *slog.Logger
+	// baseURL is the origin the portal link in that notice points at.
+	baseURL string
+}
+
+// SetNotifier supplies the channel used to tell subjects about corrections made
+// on their behalf.
+func (h *AdminHandler) SetNotifier(n notify.Notifier, log *slog.Logger, baseURL string) {
+	h.notifier, h.log, h.baseURL = n, log, strings.TrimRight(baseURL, "/")
 }
 
 // NewAdmin returns an AdminHandler.

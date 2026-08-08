@@ -32,10 +32,15 @@ export function SubmissionGrid({
   rows,
   revealSensitive,
   onRequestReveal,
+  onRectify,
 }: {
   columns: GridColumn[]
   rows: ApiRow[]
   revealSensitive: boolean
+  /** Absent when the reader may not handle data subject requests. Correcting a
+   *  record on somebody's behalf is a DSR, not a table edit, so it is gated by
+   *  the same capability as the rest of them. */
+  onRectify?: (row: ApiRow) => void
   /** Absent when the reader has no right to unmask, which is different from
    *  there being nothing to unmask. */
   onRequestReveal?: () => void
@@ -71,6 +76,7 @@ export function SubmissionGrid({
               </Th>
             ))}
             <Th>TRẠNG THÁI</Th>
+            {onRectify && <Th>{''}</Th>}
           </>
         }
       >
@@ -102,6 +108,34 @@ export function SubmissionGrid({
                   <StatusPill tone={status.tone}>{status.label}</StatusPill>
                 </span>
               </Td>
+              {onRectify && (
+                <Td className="whitespace-nowrap">
+                  {row.subject_id && !status.dimmed ? (
+                    <button
+                      type="button"
+                      onClick={() => onRectify(row)}
+                      className="rounded border border-line px-1.5 text-meta text-muted hover:text-ink"
+                      title="Chủ thể yêu cầu sửa và bạn sửa thay họ. Ghi thành một yêu cầu chỉnh sửa."
+                    >
+                      sửa
+                    </button>
+                  ) : (
+                    // Said, not left blank. A missing button with no reason reads
+                    // as a broken screen; these two are different situations and
+                    // neither is an error.
+                    <span
+                      className="text-meta text-faint"
+                      title={
+                        row.subject_id
+                          ? 'Bản ghi đã xoá hoặc đã ẩn danh — không còn gì để sửa.'
+                          : 'Biểu mẫu này không hỏi thông tin định danh, nên không có chủ thể nào để đứng tên yêu cầu.'
+                      }
+                    >
+                      —
+                    </span>
+                  )}
+                </Td>
+              )}
             </Tr>
           )
         })}

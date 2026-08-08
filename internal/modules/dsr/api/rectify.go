@@ -13,6 +13,7 @@ import (
 	"github.com/collectr/collectr/internal/modules/dsr/store"
 	"github.com/collectr/collectr/internal/platform/authn"
 	"github.com/collectr/collectr/internal/platform/httpx"
+	"github.com/collectr/collectr/internal/platform/notify"
 )
 
 // verificationMethods are the ways an operator may have satisfied themselves
@@ -119,6 +120,16 @@ func (h *AdminHandler) rectifyOnBehalf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read before the change, not after. If the correction moves the contact
+	// address itself -- the case where somebody talks an employee into
+	// redirecting where a person's mail goes -- the notice has to reach the
+	// address the real owner still controls. Sending only to the new one would
+	// mean the takeover announces itself exclusively to whoever performed it.
+	oldContact, cerr := h.store.ContactFor(r.Context(), actor.TenantID, submissionID)
+	if cerr != nil {
+		httpx.Logger(r.Context()).Error("reading contact before rectify", "error", cerr)
+	}
+
 	var created domain.Request
 	err = h.db.InTenantTx(r.Context(), actor.TenantID, func(tx pgx.Tx) error {
 		// Raised and closed in the same breath, because the subject asked for it
@@ -175,9 +186,80 @@ func (h *AdminHandler) rectifyOnBehalf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// After the commit: the correction is the thing that had to succeed, and a
+	// mail server being down must not undo it.
+	notified := h.notifyCorrection(r, actor.TenantID, submissionID, oldContact, req.Verification)
+
+	msg := "Đã sửa và ghi vào nhật ký. Giá trị cũ vẫn giữ trong bản ghi sửa đổi."
+	switch {
+	case len(notified) > 0:
+		msg += " Đã gửi thông báo tới " + strings.Join(notified, " và ") + "."
+	default:
+		// Said plainly rather than left out. An operator who believes the subject
+		// was told, when nobody was, will not make the phone call that covers it.
+		msg += " Chưa gửi được thông báo cho chủ thể — hãy báo trực tiếp."
+	}
+
 	httpx.JSON(w, r, http.StatusOK, map[string]any{
 		"request_id": created.ID,
-		"message": "Đã sửa và ghi vào nhật ký. Chủ thể dữ liệu được thông báo về " +
-			"thay đổi này; giá trị cũ vẫn giữ trong bản ghi sửa đổi.",
+		"notified":   notified,
+		"message":    msg,
 	})
+}
+
+// notifyCorrection tells the subject an employee changed their record, and
+// returns the addresses that were written to.
+//
+// Best effort by design: it runs after the transaction has committed, and every
+// failure is logged rather than returned. The alternative -- failing the request
+// when mail fails -- would leave the wrong value on file to protect a notice,
+// which is backwards.
+//
+// The message deliberately does not contain the values. Mail is unauthenticated
+// and often forwarded; "your phone number is now X" in a mailbox somebody else
+// reads is a disclosure the correction never called for. It says what changed
+// and how to object, and the values stay behind the portal.
+func (h *AdminHandler) notifyCorrection(r *http.Request, tenantID, submissionID uuid.UUID,
+	oldContact, verification string,
+) []string {
+	if h.notifier == nil {
+		return nil
+	}
+	ctx := r.Context()
+
+	// Read again after the commit: if the identifier itself was corrected, the
+	// new address is a second party who should know a record now names them.
+	newContact, err := h.store.ContactFor(ctx, tenantID, submissionID)
+	if err != nil && h.log != nil {
+		h.log.Error("reading contact after rectify", "error", err)
+	}
+
+	seen := map[string]bool{}
+	var sent []string
+	for _, to := range []string{oldContact, newContact} {
+		if to == "" || seen[to] || !strings.Contains(to, "@") {
+			// No SMS transport, so a phone identifier has no channel here. Skipped
+			// silently rather than logged as a failure -- it is a deployment
+			// without a route, not an error, and the reply already says so.
+			continue
+		}
+		seen[to] = true
+		if err := h.notifier.Send(ctx, notify.Message{
+			To:      to,
+			Subject: "Dữ liệu cá nhân của bạn vừa được chỉnh sửa",
+			Body: "Theo yêu cầu của bạn, nhân viên của chúng tôi đã chỉnh sửa thông tin " +
+				"trong hồ sơ bạn đã gửi.\n\n" +
+				"Cách xác minh đã dùng: " + verificationMethods[verification] + "\n\n" +
+				"Giá trị cũ vẫn được lưu trong lịch sử sửa đổi. Nếu bạn KHÔNG yêu cầu " +
+				"thay đổi này, hãy liên hệ lại với chúng tôi ngay.\n\n" +
+				"Bạn có thể xem toàn bộ dữ liệu của mình tại " + h.baseURL + "/dsr",
+		}); err != nil {
+			if h.log != nil {
+				h.log.Error("notifying subject of correction", "error", err)
+			}
+			continue
+		}
+		sent = append(sent, to)
+	}
+	return sent
 }

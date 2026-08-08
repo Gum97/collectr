@@ -47,6 +47,10 @@ export interface ApiRow {
   form_version: number
   submitted_at: string
   status: string
+  /** Absent when the form asked for no identifier. Correcting on the subject's
+   *  behalf is keyed by it, so a row without one gets no button rather than a
+   *  button that fails when pressed. */
+  subject_id?: string
   cells: Record<string, ApiCell | undefined>
 }
 

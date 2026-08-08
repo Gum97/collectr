@@ -31,11 +31,13 @@ import {
 } from '../../components/ui'
 import { SubmissionGrid } from './SubmissionGrid'
 import { ExportDialog } from './ExportDialog'
+import { RectifyDialog } from './RectifyDialog'
 import {
   buildRegistry,
   clipToFrom,
   cursorForTo,
   registrySpan,
+  type ApiRow,
   type GridPage,
 } from './columns'
 
@@ -90,6 +92,7 @@ export function Submissions() {
       form={forms.data?.find((f) => f.id === formId)}
       canReadSensitive={can(me.data, 'submission.read_sensitive')}
       canExport={can(me.data, 'submission.export')}
+      canRectify={can(me.data, 'dsr.handle')}
       orgRole={me.data?.org_role}
     />
   )
@@ -101,6 +104,7 @@ function Grid({
   form,
   canReadSensitive,
   canExport,
+  canRectify,
   orgRole,
 }: {
   formId: string
@@ -108,6 +112,10 @@ function Grid({
   form: FormRow | undefined
   canReadSensitive: boolean
   canExport: boolean
+  /** Correcting a record for somebody who rang up is a data subject request, so
+   *  it is gated by the capability that governs the rest of them -- not by
+   *  whoever happens to be able to read the grid. */
+  canRectify: boolean
   orgRole: string | undefined
 }) {
   const [from, setFrom] = useState('')
@@ -118,6 +126,7 @@ function Grid({
   const [reveal, setReveal] = useState(false)
   const [revealPrompt, setRevealPrompt] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [rectifying, setRectifying] = useState<ApiRow | null>(null)
 
   const cursor = trail[trail.length - 1] ?? cursorForTo(to)
 
@@ -283,7 +292,18 @@ function Grid({
             rows={clipped.rows}
             revealSensitive={reveal}
             onRequestReveal={canReadSensitive ? () => setRevealPrompt(true) : undefined}
+            onRectify={canRectify ? (row) => setRectifying(row) : undefined}
           />
+
+          {rectifying && (
+            <RectifyDialog
+              row={rectifying}
+              columns={visible}
+              revealSensitive={reveal}
+              onClose={() => setRectifying(null)}
+              onDone={() => void page.refetch()}
+            />
+          )}
 
           <nav
             aria-label="Phân trang"
