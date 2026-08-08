@@ -33,6 +33,7 @@ export default defineConfig({
       input: {
         admin: resolve(__dirname, 'index.html'),
         form: resolve(__dirname, 'src/public/form.ts'),
+        portal: resolve(__dirname, 'src/public/portal.ts'),
       },
       output: {
         entryFileNames: 'assets/[name]-[hash].js',

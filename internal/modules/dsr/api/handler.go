@@ -176,6 +176,7 @@ func (h *Handler) submissions(w http.ResponseWriter, r *http.Request) {
 			"form":         s.FormTitle,
 			"form_version": s.VersionNo,
 			"answers":      s.Answers,
+			"questions":    s.Questions,
 			"submitted_at": s.SubmittedAt,
 			"status":       s.Status,
 		})

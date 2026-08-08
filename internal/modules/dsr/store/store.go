@@ -267,12 +267,40 @@ type SubjectSubmission struct {
 	Visible     []string
 	SubmittedAt time.Time
 	Status      string
+	// Questions maps a field id to how it was worded in the version this record
+	// was collected under. Answers are stored by id, and an id is meaningless to
+	// the person reading it: a subject exercising a right of access must see the
+	// question, not fld_01KZ.... Read from the record's own version so a later
+	// rewording does not retitle what somebody already answered.
+	Questions map[string]SubjectQuestion
+}
+
+// SubjectQuestion is one question as the portal needs to render it.
+type SubjectQuestion struct {
+	Label string `json:"label"`
+	Type  string `json:"type"`
+	// Sensitive marks data the subject gave under a specific notice. The portal
+	// says so beside the value: it is the difference between "my phone number"
+	// and "my identity card", and the reader should be told which they are
+	// looking at.
+	Sensitive bool `json:"sensitive"`
+}
+
+// versionSchema is the slice of a form schema the portal needs.
+//
+// Declared here rather than imported from the forms module: the two talk only
+// through contracts, and this reads the stored JSON directly. It deliberately
+// describes less than the real schema -- adding a field to a form must never be
+// able to break the portal.
+type versionSchema struct {
+	Fields map[string]SubjectQuestion `json:"fields"`
 }
 
 // SubjectSubmissions returns everything one subject has submitted to a tenant.
 func (s *Store) SubjectSubmissions(ctx context.Context, tenantID, subjectID uuid.UUID, onlyID *uuid.UUID) ([]SubjectSubmission, error) {
 	const q = `
-		SELECT s.id, f.title, v.version_no, s.answers, s.visible_fields, s.submitted_at, s.status
+		SELECT s.id, f.title, v.version_no, s.answers, s.visible_fields, s.submitted_at,
+		       s.status, v.schema
 		FROM forms.submissions s
 		JOIN forms.forms f ON f.id = s.form_id
 		JOIN forms.form_versions v ON v.id = s.form_version_id
@@ -291,10 +319,12 @@ func (s *Store) SubjectSubmissions(ctx context.Context, tenantID, subjectID uuid
 		defer rows.Close()
 		for rows.Next() {
 			var sub SubjectSubmission
+			var schema versionSchema
 			if err := rows.Scan(&sub.ID, &sub.FormTitle, &sub.VersionNo, &sub.Answers,
-				&sub.Visible, &sub.SubmittedAt, &sub.Status); err != nil {
+				&sub.Visible, &sub.SubmittedAt, &sub.Status, &schema); err != nil {
 				return err
 			}
+			sub.Questions = schema.Fields
 			out = append(out, sub)
 		}
 		return rows.Err()

@@ -342,6 +342,9 @@ func TestSqueezeKeepsTheStylesheetIntact(t *testing.T) {
 		".cf", ".cf-field", ".cf-label", ".cf-req", ".cf-help", ".cf-input",
 		".cf-error", ".cf-options", ".cf-option", ".cf-rating", ".cf-star",
 		".cf-consent", ".cf-doc", ".cf-status", ".cf-submit",
+		// portal.ts builds from these. It reuses the form's controls rather than
+		// inventing its own, so most of the list above covers it too.
+		".card", ".label", ".meta", ".btn", ".btn-danger", ".p-right", ".p-right-danger",
 	} {
 		if !strings.Contains(out, class+" ") && !strings.Contains(out, class+":") &&
 			!strings.Contains(out, class+"[") && !strings.Contains(out, class+",") {
