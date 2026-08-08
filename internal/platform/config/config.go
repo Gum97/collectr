@@ -42,6 +42,19 @@ type Config struct {
 	// TenantKEK is the root key wrapping every per-subject data key. Losing it
 	// destroys all sensitive data irrecoverably; that is what makes erasure real.
 	TenantKEK []byte
+	// SetupToken guards the one-time endpoint that creates the first owner.
+	//
+	// A fresh deployment is reachable before anybody has an account, so whoever
+	// arrives first would otherwise own it -- and a self-hosted instance behind
+	// automatic TLS is found by scanners in minutes, not days. The token closes
+	// that window without introducing a default password, which is the other way
+	// this is usually solved and the worse one: default credentials survive in
+	// production for years because nothing forces the change.
+	//
+	// Left unset, one is generated at startup and written to the log, where the
+	// operator who just ran the container is already looking.
+	SetupToken string
+
 	// VisitPepper keys the HMAC over visit tokens, keeping visit ids from being
 	// forgeable and from correlating across deployments.
 	VisitPepper []byte
@@ -109,6 +122,7 @@ func Load() (Config, error) {
 		DatabaseURL:          os.Getenv("DATABASE_URL"),
 		RedisURL:             os.Getenv("REDIS_URL"),
 		DeploymentRole:       envOr("DEPLOYMENT_ROLE", "controller"),
+		SetupToken:           os.Getenv("SETUP_TOKEN"),
 		EventStreamMaxLen:    int64(envInt("EVENT_STREAM_MAXLEN", 1_000_000, &errs)),
 		EventBufferSize:      envInt("EVENT_BUFFER_SIZE", 10_000, &errs),
 		LinkCacheTTL:         time.Duration(envInt("LINK_CACHE_TTL_SECONDS", 300, &errs)) * time.Second,

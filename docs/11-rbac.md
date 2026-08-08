@@ -43,18 +43,32 @@ Quyền hiệu lực = **hợp** của quyền cấp org và quyền cấp proje
 
 Kiểm quyền theo capability, không theo tên vai trò. Vai trò chỉ là gói capability đặt sẵn.
 
+Mười sáu capability sau **đang được thực thi trong code** (`internal/platform/authn/authn.go`):
+
 ```
-project.read  project.manage  member.manage
-form.read  form.write  form.publish  form.delete
+member.manage
+form.read  form.write  form.publish
 link.read  link.write  link.delete
-submission.read  submission.read_sensitive  submission.export  submission.delete  submission.edit
+submission.read  submission.read_sensitive  submission.export
 analytics.read
 consent.manage        # sửa văn bản đồng ý, mục đích xử lý
 dsr.handle            # xử lý yêu cầu của chủ thể dữ liệu
 audit.read
 apikey.manage  webhook.manage
-org.settings  org.billing
 ```
+
+> [!WARNING]
+> Bản trước của tài liệu này còn liệt kê `project.read`, `project.manage`,
+> `form.delete`, `submission.edit`, `submission.delete`, `org.settings` và
+> `org.billing`. **Chúng chưa tồn tại trong code.** Đó là thiết kế, không phải
+> mô tả — và một tài liệu phân quyền mô tả những quyền không được kiểm là thứ
+> nguy hiểm nhất trong cả tập tài liệu này: người đọc kết luận rằng một thao tác
+> đang được canh gác, trong khi thứ canh nó là một capability khác hoặc không có
+> gì cả.
+>
+> Các thao tác tương ứng hiện được canh bằng những capability khác — ví dụ xoá
+> dự án và thu hồi vai trò dự án đi qua `member.manage`. Bảng dưới đã bỏ những
+> dòng không thực thi được; đừng thêm lại cho tới khi code kiểm chúng.
 
 Ba capability tách riêng có chủ đích:
 
@@ -68,7 +82,7 @@ Ba capability tách riêng có chủ đích:
 
 | Vai trò | Capability | Ghi chú |
 |---|---|---|
-| **owner** | tất cả, kể cả `org.settings`, xóa org | ≥ 1, không thể tự hạ cấp nếu là người cuối cùng |
+| **owner** | tất cả 16 capability, và là vai trò duy nhất xoá được tổ chức | ≥ 1, không thể tự hạ cấp nếu là người cuối cùng |
 | **admin** | như owner trừ xóa org / chuyển quyền sở hữu | |
 | **member** | không có gì ở cấp org | Chỉ có quyền qua project membership |
 | **dpo** | `audit.read` · `dsr.handle` · `consent.manage` · `submission.read` **trên mọi project** | Vai trò riêng cho người phụ trách bảo vệ dữ liệu. **Không có** `submission.export`, **không có** `form.write` — giám sát, không vận hành |
@@ -79,19 +93,14 @@ Vai trò `dpo` tồn tại vì nghĩa vụ tuân thủ cần một người nhì
 
 | Capability | manager | editor | analyst | viewer |
 |---|:---:|:---:|:---:|:---:|
-| `project.read` | ✅ | ✅ | ✅ | ✅ |
-| `project.manage` / `member.manage` | ✅ | | | |
 | `form.read` | ✅ | ✅ | ✅ | ✅ |
 | `form.write` | ✅ | ✅ | | |
 | `form.publish` | ✅ | ✅ | | |
-| `form.delete` | ✅ | | | |
 | `link.read` | ✅ | ✅ | ✅ | ✅ |
 | `link.write` | ✅ | ✅ | | |
 | `link.delete` | ✅ | | | |
 | `submission.read` | ✅ | ✅ | ✅ | ✅ |
 | `submission.read_sensitive` | ✅ | | | |
-| `submission.edit` | ✅ | ✅ | | |
-| `submission.delete` | ✅ | | | |
 | `submission.export` | ✅ | | ✅ | |
 | `analytics.read` | ✅ | ✅ | ✅ | ✅ |
 | `webhook.manage` / `apikey.manage` | ✅ | | | |

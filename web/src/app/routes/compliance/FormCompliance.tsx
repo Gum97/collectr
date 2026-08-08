@@ -186,7 +186,7 @@ function PurposesCard({ form }: { form: FormDetail }) {
           title="Chưa đọc được mục đích của biểu mẫu này"
           hint={
             <>
-              GET /api/v1/forms/{'{id}'} hiện chưa trả về khối <span className="font-mono">consent.purposes</span>.
+              Biểu mẫu này chưa có version nào đọc được — chưa publish và cũng chưa có bản nháp.
               Danh sách mục đích cấp tổ chức nằm ở{' '}
               <Link to="/compliance?tab=purposes" className="underline">
                 Trung tâm tuân thủ → Mục đích
@@ -323,8 +323,8 @@ function SensitiveFieldsCard({ fields }: { fields: SensitiveField[] | null | und
       <section className="rounded border border-dashed border-duesoon bg-duesoon/5 p-3">
         <h2 className="text-meta font-semibold text-duesoon">Chưa xác định được field nhạy cảm</h2>
         <p className="mt-1 text-body">
-          GET /api/v1/forms/{'{id}'} chưa trả về danh sách field, nên màn hình này không khẳng định
-          được biểu mẫu có hay không có dữ liệu nhạy cảm. Đừng coi đây là “không có”.
+          Chưa đọc được version nào của biểu mẫu, nên màn hình này không khẳng định được nó có
+          hay không có dữ liệu nhạy cảm. Đừng coi đây là “không có”.
         </p>
       </section>
     )

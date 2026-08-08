@@ -70,6 +70,10 @@ GET           /api/v1/forms/{id}/submissions/{sid}
 GET           /api/v1/forms/{id}/analytics/funnel
 POST          /api/v1/forms/{id}/exports       # → job, xem doc 9
 
+# Files
+GET           /api/v1/forms/{id}/files          # tệp đính kèm đã nhận
+POST          /api/v1/files/{id}/download-url   # → link ký 10 phút, ghi audit
+
 # Consent (chỉ đọc qua API — ghi phải qua form thật để có bằng chứng)
 GET           /api/v1/subjects/{id}/consents
 GET           /api/v1/consent/purposes
@@ -82,6 +86,34 @@ POST          /api/v1/webhooks/{id}/deliveries/{did}/replay
 ```
 
 > **Không có `POST /api/v1/submissions`.** Tạo submission qua API nghĩa là tạo dữ liệu cá nhân không có bằng chứng đồng ý — chính thứ mà toàn bộ thiết kế này tồn tại để ngăn. Ai cần nhập liệu hàng loạt thì dùng import có khai báo căn cứ pháp lý (ngoài MVP).
+
+### Định dạng câu trả lời
+
+Một câu hỏi kiểu `text` có thể khai `format`. Danh sách đóng, không phải ô nhập
+biểu thức chính quy: mẫu do người dùng viết sẽ chạy trong trình duyệt của người
+điền form, nơi một mẫu quay lui vô hạn làm treo máy họ — và người dán mẫu đó
+không bao giờ nhìn thấy hậu quả.
+
+| `format` | Nhận | Bàn phím trên điện thoại |
+|---|---|---|
+| `email` | một `@`, có dấu chấm trong tên miền | `email` |
+| `phone_vn` | 10 chữ số bắt đầu bằng `0`, hoặc `+84` + 9 số | `tel` |
+| `tax_code` | 10 chữ số, hoặc kèm 3 số đơn vị phụ thuộc | `numeric` |
+| `national_id` | đúng 12 chữ số (CMND 9 số đã hết hiệu lực) | `numeric` |
+| `url` | bắt đầu bằng `http://` hoặc `https://` | `url` |
+| `number` | số, chấp nhận dấu phẩy thập phân | `decimal` |
+| `integer` | số nguyên | `numeric` |
+
+Dấu cách, dấu chấm và dấu gạch ngang được bỏ trước khi so khớp cho số điện thoại,
+mã số thuế và CCCD: từ chối một câu trả lời đúng chỉ vì nó có dấu ngăn cách là
+mất một lượt gửi, và không có cách nào biết chuyện đó đã xảy ra.
+
+`min` và `max` giới hạn khoảng — ngày theo dạng `YYYY-MM-DD`, số theo giá trị.
+Khoảng ngược (min > max) bị chặn ngay ở bước publish, vì nó từ chối **mọi** câu
+trả lời.
+
+Máy chủ kiểm lại toàn bộ khi nhận bài gửi. Kiểm ở trình duyệt chỉ để người điền
+thấy lỗi sớm; một bài gửi là một HTTP request và ai cũng tạo được.
 
 ## 10.4 Webhooks
 

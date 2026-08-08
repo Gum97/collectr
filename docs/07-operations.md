@@ -167,6 +167,13 @@ Mỗi bước có **điều kiện kích hoạt định lượng**. Hệ thống
 
 ## 7.5 Checklist trước khi go-live
 
+**Khởi tạo lần đầu**
+- [ ] Đọc mã khởi tạo từ log và tạo chủ sở hữu **ngay sau khi khởi động**, không để deployment nằm không chủ qua đêm
+- [ ] Xác nhận `docker compose logs collectr | grep setup_token` không còn ra gì sau khi đã có chủ sở hữu
+- [ ] Nếu đặt `SETUP_TOKEN` thủ công: xoá khỏi `.env` sau khi tạo xong, nó không còn tác dụng gì ngoài việc nằm đó
+
+Một cài đặt mới chưa có ai sở hữu. Instance nằm sau TLS tự động xuất hiện trong Certificate Transparency log trong vài giây, và đó là nơi máy quét đọc — nên khoảng thời gian giữa `docker compose up` và lần tạo tài khoản đầu tiên là khoảng thời gian duy nhất mà mã khởi tạo là thứ đứng giữa.
+
 **Kỹ thuật**
 - [x] Load-test `/r/{code}` (k6) → p99 = 2,23ms ở 500 RPS ([kết quả](02-estimation.md#26-kết-quả-đo-2026-08-07))
 - [x] Load-test `POST /submissions` → p99 = 16,78ms ở 100 RPS; trần ≈ 800/s

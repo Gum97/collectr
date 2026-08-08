@@ -3,7 +3,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -276,6 +278,25 @@ func run() error {
 	auth := authn.NewAuthenticator(db)
 	iamHandler.SetAuthenticator(auth)
 
+	// The bootstrap secret. Generated when the operator did not supply one, and
+	// logged only while the deployment still has no owner -- printing it on every
+	// restart of a live instance would put a live credential in the log rotation
+	// of a server that no longer needs it.
+	setupToken := cfg.SetupToken
+	if done, err := iamSvc.SetupComplete(ctx); err != nil {
+		log.Warn("checking setup status", "error", err)
+	} else if !done {
+		if setupToken == "" {
+			setupToken, err = randomToken()
+			if err != nil {
+				return fmt.Errorf("generating setup token: %w", err)
+			}
+		}
+		log.Info("deployment has no owner yet; create one at /setup",
+			"setup_token", setupToken)
+	}
+	iamHandler.SetSetupToken(setupToken)
+
 	public := http.NewServeMux()
 	public.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
@@ -522,4 +543,17 @@ func guardMetrics(token string, next http.Handler, log *slog.Logger) http.Handle
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// randomToken returns a URL-safe secret for the one-time setup endpoint.
+//
+// 32 bytes from crypto/rand: it is a bearer credential for ownership of the
+// whole deployment, and it exists for the minutes between starting the server
+// and creating the first account.
+func randomToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }

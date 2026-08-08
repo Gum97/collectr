@@ -64,7 +64,8 @@ Thiết kế bám theo **Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15** 
 
 **Biểu mẫu**
 - 7 loại câu hỏi: văn bản, chọn một, chọn nhiều, đánh giá, ngày, danh sách thả xuống, tải tệp
-- Tệp đính kèm được nhận dạng bằng magic bytes, mã hóa từng tệp, tải về qua link ký có hạn
+- **7 định dạng câu trả lời** kiểm cả hai đầu: email, số điện thoại VN, mã số thuế, CCCD, đường dẫn, số, số nguyên — kèm giới hạn khoảng cho số và ngày
+- Tệp đính kèm được nhận dạng bằng magic bytes (đổi đuôi tệp không qua được), mã hóa từng tệp, tải về qua link ký hạn 10 phút và có ghi vết ai tải
 - **Rẽ nhánh có điều kiện** như Google Forms / MS Forms
 - **Schema có version, bất biến** — sửa biểu mẫu không bao giờ làm hỏng dữ liệu đã thu
 - Bảng dữ liệu hợp nhất mọi version, lọc và tìm kiếm
@@ -72,7 +73,8 @@ Thiết kế bám theo **Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15** 
 **Tuân thủ PDPL**
 - Bản ghi đồng ý riêng cho từng mục đích, kèm bằng chứng tái dựng được
 - Rút đồng ý bất cứ lúc nào, không ảnh hưởng tính hợp pháp của xử lý trước đó
-- Cổng tự phục vụ cho chủ thể dữ liệu: tra cứu, sửa, yêu cầu xóa
+- Cổng tự phục vụ cho chủ thể dữ liệu: tra cứu, sửa, yêu cầu xóa — vào bằng liên kết gửi tới email/SĐT, không có mật khẩu để mất
+- Chủ thể xem được cả dữ liệu nhạy cảm của chính mình (che sẵn, mở bằng một cú bấm), nhưng không sửa trực tiếp được: sửa nó phải niêm phong lại bằng khóa của họ
 - Chính sách lưu trữ theo từng biểu mẫu, tự động xóa hoặc ẩn danh khi hết hạn
 - Nhật ký bất biến có chuỗi hash, phát hiện được mọi can thiệp
 - Đánh dấu trường nhạy cảm → mã hóa riêng + xóa triệt để bằng crypto-shredding
@@ -105,17 +107,24 @@ Thiết kế bám theo **Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15** 
 **Yêu cầu:** Docker và Docker Compose.
 
 ```bash
-git clone https://github.com/<org>/collectr.git
+git clone https://github.com/Gum97/collectr.git
 cd collectr
 cp .env.example .env
 make secrets          # sinh TENANT_KEK và các khóa bí mật
 docker compose up -d
 ```
 
-Tạo tổ chức và tài khoản chủ sở hữu đầu tiên:
+Lấy mã khởi tạo. Máy chủ sinh mã này khi khởi động và chỉ in ra chừng nào chưa có chủ sở hữu:
+
+```bash
+docker compose logs collectr | grep setup_token
+```
+
+Rồi mở `http://localhost/setup`, hoặc gọi thẳng API:
 
 ```bash
 curl -X POST http://localhost/api/auth/setup -H 'Content-Type: application/json' -d '{
+  "token":    "<mã từ log>",
   "org_name": "Công ty ABC",
   "email":    "admin@abc.vn",
   "name":     "Nguyễn Văn A",
@@ -123,7 +132,11 @@ curl -X POST http://localhost/api/auth/setup -H 'Content-Type: application/json'
 }'
 ```
 
-Endpoint này **chỉ chạy được một lần**: sau khi có tài khoản đầu tiên nó tự đóng vĩnh viễn. Tài khoản `owner` bắt buộc bật xác thực hai lớp — đăng nhập lần đầu sẽ trả `mfa_setup_required: true`.
+**Không có tài khoản mặc định, và sẽ không bao giờ có.** `admin/admin` trên một sản phẩm tự vận hành sống sót trong môi trường thật hàng năm trời, vì không có gì bắt người ta đổi. Mã khởi tạo giải quyết cùng vấn đề theo hướng ngược lại: nó chứng minh người gọi đọc được log của chính máy chủ đó, và nó biến mất ngay khi có chủ sở hữu.
+
+Nó cũng đóng một khoảng trống mà nếu không có thì rất khó thấy: giữa lúc container chạy và lúc bạn mở trình duyệt, một cài đặt mới **chưa có ai sở hữu**. Instance nằm sau TLS tự động sẽ xuất hiện trong Certificate Transparency log trong vòng vài giây, và đó là nơi máy quét đọc. Không có mã thì ai chạm tới trước sẽ thành chủ.
+
+Endpoint này **chỉ chạy được một lần**: sau khi có tài khoản đầu tiên nó trả `409` vĩnh viễn. Tài khoản `owner` bắt buộc bật xác thực hai lớp — có 72 giờ ân hạn để bật, sau đó tài khoản mất quyền cho tới khi bật.
 
 Mời đồng nghiệp (cần `SMTP_*`):
 
@@ -148,6 +161,7 @@ curl -X POST http://localhost/api/v1/members/invitations -b cookies.txt \
 | `DATABASE_URL` | — | Chuỗi kết nối PostgreSQL |
 | `REDIS_URL` | — | Chuỗi kết nối Redis |
 | `TENANT_KEK` | — | **Bắt buộc.** Khóa gốc mã hóa, 32 byte base64 |
+| `SETUP_TOKEN` | tự sinh | Mã cho endpoint tạo chủ sở hữu đầu tiên. Bỏ trống thì máy chủ tự sinh và in ra log |
 | `STORAGE_DRIVER` | `local` | `local` hoặc `s3` |
 | `STORAGE_LOCAL_PATH` | `/data/files` | Thư mục lưu tệp khi dùng `local` |
 | `STORAGE_S3_*` | — | Endpoint, bucket, khóa truy cập khi dùng `s3` |

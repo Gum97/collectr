@@ -9,10 +9,11 @@
  * visibly, as unavailable -- not hidden, because a reader who cannot see them
  * will assume the tool forgot rather than that it declined.
  *
- * BACKEND: /api/v1/api-keys does not exist yet. Nothing here calls it. The
- * contract below is the one documented in docs/10-public-api.md §10.1 and is
- * was gated behind ENDPOINTS_READY until the endpoints existed; the flag stays as one
- * constant once the handler lands.
+ * The endpoints exist (internal/modules/iam/api/apikeys.go) and match the
+ * contract in docs/10-public-api.md §10.1. ENDPOINTS_READY stays as one constant
+ * rather than being deleted: it is what this screen was gated behind before the
+ * handler landed, and the next screen written ahead of its API should copy the
+ * pattern rather than render an empty table that reads as "no keys".
  */
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'

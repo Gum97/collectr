@@ -169,6 +169,11 @@ func (h *Handler) listInvitations(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{
 			"id": inv.ID, "email": inv.Email, "org_role": inv.OrgRole,
 			"expires_at": inv.ExpiresAt, "created_at": inv.CreatedAt,
+			// The project roles the invitation carries. The store has always read
+			// them and this response dropped them, so revoking an invitation and
+			// issuing a new one silently lost the project access it was for --
+			// and the person re-issuing it had nothing on screen to copy from.
+			"project_grants": grantsOf(inv),
 		})
 	}
 	httpx.JSON(w, r, http.StatusOK, map[string]any{"data": out})
@@ -307,4 +312,16 @@ func (h *Handler) writeAudit(r *http.Request, actor authn.Actor, action string, 
 	if err != nil {
 		httpx.Logger(r.Context()).Error("writing audit entry", "error", err, "action", action)
 	}
+}
+
+// grantsOf renders an invitation's project roles for the listing.
+//
+// Always a list, never null: a client that maps over the field would otherwise
+// have to special-case an invitation that grants nothing.
+func grantsOf(inv store.Invitation) []map[string]any {
+	out := make([]map[string]any, 0, len(inv.Grants))
+	for _, g := range inv.Grants {
+		out = append(out, map[string]any{"project_id": g.ProjectID, "role": g.Role})
+	}
+	return out
 }

@@ -2,6 +2,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"net/http"
@@ -29,7 +30,13 @@ type Handler struct {
 	audit    contracts.AuditWriter
 	secure   bool
 	auth     *authn.Authenticator
+	// setupToken guards the one-time bootstrap. Empty means the deployment was
+	// started without one, and setup is refused rather than left open.
+	setupToken string
 }
+
+// SetSetupToken supplies the secret that authorises creating the first owner.
+func (h *Handler) SetSetupToken(token string) { h.setupToken = token }
 
 // New returns a Handler.
 func New(svc *app.Service, db *postgres.DB, audit contracts.AuditWriter, secure bool, mfaGrace time.Duration) *Handler {
@@ -57,6 +64,9 @@ type setupRequest struct {
 	Email    string `json:"email"`
 	Name     string `json:"name"`
 	Password string `json:"password"`
+	// Token is the value printed in the server log at startup, or set as
+	// SETUP_TOKEN. It proves the caller can read the deployment's own output.
+	Token string `json:"token"`
 }
 
 // setupStatus reports whether the deployment still needs its first account.
@@ -84,6 +94,18 @@ func (h *Handler) setup(w http.ResponseWriter, r *http.Request) {
 	if req.OrgName == "" || req.Email == "" {
 		httpx.ErrorWithFields(w, r, http.StatusUnprocessableEntity, "validation_failed",
 			"Invalid request", map[string]any{"org_name": "organisation name and email are required"})
+		return
+	}
+
+	// Checked before anything else is done, and in constant time. Without it the
+	// first person to reach a fresh deployment owns it -- and a self-hosted
+	// instance that just got its TLS certificate is on a public log within
+	// seconds, which is where scanners read from.
+	if h.setupToken == "" ||
+		subtle.ConstantTimeCompare([]byte(req.Token), []byte(h.setupToken)) != 1 {
+		httpx.Error(w, r, http.StatusForbidden, "invalid_setup_token",
+			"Mã khởi tạo không đúng. Mã được in ra log của máy chủ khi khởi động: "+
+				"docker compose logs collectr | grep setup_token")
 		return
 	}
 

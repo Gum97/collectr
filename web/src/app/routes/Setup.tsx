@@ -33,6 +33,7 @@ export function Setup() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [token, setToken] = useState('')
   const [kekBackedUp, setKekBackedUp] = useState(false)
   const [done, setDone] = useState(false)
 
@@ -50,6 +51,7 @@ export function Setup() {
         name: name.trim(),
         email: email.trim(),
         password,
+        token: token.trim(),
       }),
     onSuccess: () => {
       setDone(true)
@@ -127,6 +129,7 @@ export function Setup() {
   const mismatch = confirm.length > 0 && confirm !== password
   const tooShort = password.length > 0 && password.length < PASSWORD_MIN
   const ready =
+    token.trim() !== '' &&
     orgName.trim() !== '' &&
     email.trim() !== '' &&
     password.length >= PASSWORD_MIN &&
@@ -154,13 +157,34 @@ export function Setup() {
         className="flex flex-col gap-3"
       >
         <Field
+          label="Mã khởi tạo"
+          error={fieldErrors['token']}
+          hint={
+            <>
+              In ra log của máy chủ khi khởi động:{' '}
+              <span className="font-mono text-meta">docker compose logs collectr | grep setup_token</span>.
+              Mã này thay cho tài khoản mặc định — một cài đặt mới nằm trên Internet sẽ bị quét thấy
+              trong vài phút, và nếu không có mã thì ai chạm tới trước sẽ thành chủ sở hữu.
+            </>
+          }
+        >
+          <input
+            required
+            autoFocus
+            className="input font-mono"
+            autoComplete="off"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+          />
+        </Field>
+
+        <Field
           label="Tên tổ chức"
           error={fieldErrors['org_name']}
           hint="Tên pháp lý, đúng như trên đăng ký kinh doanh — nó xuất hiện trong văn bản đồng ý."
         >
           <input
             required
-            autoFocus
             className="input"
             placeholder="Công ty Acme"
             value={orgName}
