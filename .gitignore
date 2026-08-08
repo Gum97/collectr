@@ -1,0 +1,27 @@
+# Secrets. TENANT_KEK lives here; committing it defeats every encryption
+# guarantee in the system.
+.env
+.env.*
+!.env.example
+
+# Build artefacts
+/bin/
+/.data/
+coverage.out
+*.test
+
+# Local tooling
+.DS_Store
+.idea/
+.vscode/
+
+# Node dependencies. Restored by `npm ci` from the lockfile, which is committed.
+/web/node_modules/
+
+# Built interface. Vite writes here and the Dockerfile rebuilds it; only the
+# placeholder that lets `go build` work in a fresh clone is tracked (see the
+# .gitignore in that directory).
+/web/dist/
+
+# Stray build output.
+/adaptercheck
