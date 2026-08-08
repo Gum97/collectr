@@ -73,6 +73,12 @@ services:
       # The API server connects as collectr_app, for which the row-level security
       # policies are enforced. Running it as the owner would silently disable them.
       DATABASE_URL: postgres://collectr_app:${APP_DB_PASSWORD}@postgres:5432/collectr?sslmode=disable
+      # Guards the scrape endpoint. Unset leaves it open and the server says so
+      # at startup; the shipped Caddy config proxies everything, so "put a
+      # firewall in front of it" is not a plan anybody executed.
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      MFA_GRACE_HOURS: ${MFA_GRACE_HOURS:-72}
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
       REDIS_URL: redis://redis:6379/0
       TENANT_KEK: ${TENANT_KEK:?run `make secrets`}
       VISIT_PEPPER: ${VISIT_PEPPER:?run `make secrets`}

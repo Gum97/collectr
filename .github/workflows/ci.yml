@@ -55,6 +55,44 @@ jobs:
         with:
           version: latest
 
+  web:
+    name: interface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: install
+        working-directory: web
+        run: npm ci
+      - name: typecheck
+        working-directory: web
+        run: npx tsc -b --noEmit
+      # The two drift guards, run here rather than only inside `docker build`.
+      #
+      # They exist to fail when the client and the server disagree: engine.ts
+      # against the Go engine's own fixtures, and the role matrix against
+      # roles.go. Reaching them only through the image build meant a pull request
+      # that broke one failed at "compose did not come up", which names the
+      # symptom and hides the cause.
+      - name: tests
+        working-directory: web
+        run: npx vitest run --reporter=dot
+      - name: build
+        working-directory: web
+        run: npm run build
+      # The interface is embedded in the binary, so a build that compiles here
+      # but not against the Go side is only half a check.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: embed
+        run: go build ./internal/webui/
+
   vuln:
     runs-on: ubuntu-latest
     steps:

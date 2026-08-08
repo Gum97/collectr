@@ -30,6 +30,8 @@ type Config struct {
 	TrustedProxyHops int
 	// MFAGrace is how long a role that requires MFA may run without it.
 	MFAGrace time.Duration
+	// MetricsToken guards the scrape endpoint. Empty means unguarded.
+	MetricsToken string
 
 	DatabaseURL string
 	RedisURL    string
@@ -152,6 +154,10 @@ func Load() (Config, error) {
 	// secured. Three days is long enough to set up an authenticator without
 	// being long enough to forget.
 	cfg.MFAGrace = time.Duration(envInt("MFA_GRACE_HOURS", 72, &errs)) * time.Hour
+
+	// Bearer token guarding /metrics. Empty leaves the endpoint open, which is
+	// only safe when something in front of it is not.
+	cfg.MetricsToken = os.Getenv("METRICS_TOKEN")
 
 	if cfg.ShortURLBase == "" {
 		cfg.ShortURLBase = cfg.BaseURL

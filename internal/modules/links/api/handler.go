@@ -197,7 +197,16 @@ func (h *Handler) destination(res domain.Resolution, token string, incoming url.
 			q.Add(key, v)
 		}
 	}
-	q.Set("cx", token)
+	// The visit token goes only to our own form page.
+	//
+	// It is a signed identifier for this visit, and attaching it to an external
+	// destination hands that identifier -- and the ability to replay it as
+	// attribution -- to whoever runs the destination, plus their analytics and
+	// their logs. It exists to join a click to a form view on this deployment;
+	// there is no form view anywhere else.
+	if sameOrigin(u, h.baseURL) {
+		q.Set("cx", token)
+	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
@@ -684,4 +693,13 @@ func (h *Handler) writeAudit(r *http.Request, actor authn.Actor, action string, 
 	if err != nil {
 		httpx.Logger(r.Context()).Error("writing audit entry", "error", err, "action", action)
 	}
+}
+
+// sameOrigin reports whether u points at this deployment's own interface.
+func sameOrigin(u *url.URL, baseURL string) bool {
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Host, base.Host)
 }
