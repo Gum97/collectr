@@ -262,8 +262,9 @@ func run() error {
 		Store: iamstore.New(db), Redis: rdb, Envelope: envelope,
 		Notifier: notifier, Log: log, BaseURL: cfg.BaseURL,
 		LinkHost: hostPortOf(cfg.ShortURLBase),
+		MFAGrace: cfg.MFAGrace,
 	})
-	iamHandler := iamapi.New(iamSvc, db, auditWriter, cfg.Env != "dev")
+	iamHandler := iamapi.New(iamSvc, db, auditWriter, cfg.Env != "dev", cfg.MFAGrace)
 
 	auth := authn.NewAuthenticator(db)
 

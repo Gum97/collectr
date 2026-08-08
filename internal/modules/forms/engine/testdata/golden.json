@@ -47,7 +47,8 @@
         "type": "text",
         "label": "Full name",
         "required": true,
-        "pii": "name"
+        "pii": "name",
+        "identifier": true
       },
       "fld_used": {
         "type": "choice",

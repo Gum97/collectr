@@ -46,6 +46,7 @@ type Service struct {
 	log      *slog.Logger
 	baseURL  string
 	linkHost string
+	mfaGrace time.Duration
 }
 
 // Deps are the Service's collaborators.
@@ -58,6 +59,8 @@ type Deps struct {
 	BaseURL  string
 	// LinkHost is the hostname setup registers as the first link domain.
 	LinkHost string
+	// MFAGrace is how long a privileged account may run without a second factor.
+	MFAGrace time.Duration
 }
 
 // NewService returns a Service.
@@ -65,7 +68,7 @@ func NewService(d Deps) *Service {
 	return &Service{
 		store: d.Store, rdb: d.Redis, env: d.Envelope,
 		notifier: d.Notifier, log: d.Log, baseURL: d.BaseURL,
-		linkHost: d.LinkHost,
+		linkHost: d.LinkHost, mfaGrace: d.MFAGrace,
 	}
 }
 
@@ -225,7 +228,17 @@ func (s *Service) Resolve(ctx context.Context, raw string) (authn.Actor, uuid.UU
 	// restriction without signing out. The enrolment endpoints need no
 	// capability, so an empty set still leaves the way forward open -- and only
 	// that way.
-	if domain.RequiresMFA(m.OrgRole) && !user.MFAEnabled {
+	// A role that must use a second factor keeps its capabilities during a grace
+	// window and loses them after it.
+	//
+	// Not enforced from the first minute: on a fresh install the owner is looking
+	// around, and a product that answers "you may not" to every screen before
+	// showing anything gets uninstalled rather than secured. After the window it
+	// is enforced on every request, so the account cannot drift indefinitely.
+	// user.ID is not selected by ResolveSession, so the session's copy is used.
+	if domain.RequiresMFA(m.OrgRole) && !user.MFAEnabled &&
+		!user.CreatedAt.IsZero() &&
+		!time.Now().Before(user.CreatedAt.Add(s.mfaGrace)) {
 		caps = nil
 	}
 

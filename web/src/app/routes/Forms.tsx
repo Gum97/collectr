@@ -1,6 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router'
-import { api, type List } from '../lib/api'
+import { useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router'
+import { api, RequestFailed, type List } from '../lib/api'
 import { num } from '../components/ui'
 
 interface FormRow {
@@ -34,7 +37,7 @@ export function Forms() {
               : ''}
           </p>
         </div>
-        <button className="btn-primary">+ Biểu mẫu mới</button>
+        <CreateForm projectId={projectId!} />
       </header>
 
       {forms.isPending && <p className="text-body text-muted">Đang tải…</p>}
@@ -94,5 +97,79 @@ function StatusPill({ status }: { status: string }) {
     <span className="rounded border border-line px-1.5 py-0.5 text-meta font-semibold">
       {label[status] ?? status}
     </span>
+  )
+}
+
+/**
+ * Creating a form, and then going straight into it.
+ *
+ * The title is asked for here rather than defaulted to "Biểu mẫu mới", because
+ * it is the name a respondent sees at the top of the page they are filling in --
+ * not an internal label somebody renames later.
+ */
+function CreateForm({ projectId }: { projectId: string }) {
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState('')
+  const [error, setError] = useState('')
+  const nav = useNavigate()
+  const qc = useQueryClient()
+
+  const create = useMutation({
+    mutationFn: async () =>
+      api.post<{ id: string }>('/api/v1/forms', { project_id: projectId, title: title.trim() }),
+    onSuccess: async (form) => {
+      await qc.invalidateQueries({ queryKey: ['forms', projectId] })
+      // Into the builder, not back to the list: a form with no questions is not
+      // a thing anybody wanted, it is a step on the way to one.
+      nav(`/p/${projectId}/forms/${form.id}/builder`)
+    },
+    onError: (err) => {
+      setError(
+        err instanceof RequestFailed
+          ? (err.fields.title ?? err.body.title)
+          : 'Không tạo được biểu mẫu.',
+      )
+    },
+  })
+
+  if (!open) {
+    return (
+      <button className="btn-primary" onClick={() => setOpen(true)}>
+        + Biểu mẫu mới
+      </button>
+    )
+  }
+
+  return (
+    <form
+      className="flex items-start gap-2"
+      onSubmit={(e) => {
+        e.preventDefault()
+        setError('')
+        if (title.trim()) create.mutate()
+      }}
+    >
+      <div>
+        <input
+          autoFocus
+          className="input w-64"
+          placeholder="Tên biểu mẫu"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
+        />
+        {error && (
+          <p role="alert" className="mt-1 text-meta text-legal">
+            {error}
+          </p>
+        )}
+      </div>
+      <button type="submit" className="btn-primary" disabled={!title.trim() || create.isPending}>
+        {create.isPending ? 'Đang tạo…' : 'Tạo'}
+      </button>
+      <button type="button" className="btn" onClick={() => setOpen(false)}>
+        Huỷ
+      </button>
+    </form>
   )
 }

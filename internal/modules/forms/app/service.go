@@ -67,7 +67,19 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (store.Form, error
 		RetentionAction: "delete",
 		CreatedBy:       in.CreatedBy,
 	}
-	if err := s.repo.CreateForm(ctx, f, in.Draft); err != nil {
+	// A form with no page has nowhere to put a question, so the builder renders
+	// an empty column and the only affordance for adding one never appears. The
+	// first page is part of what "a form" means, not something to make somebody
+	// discover.
+	draft := in.Draft
+	if len(draft.Pages) == 0 {
+		draft.Pages = []domain.Page{{ID: domain.PageID("pg_" + ulid.Make().String()), Title: "Trang 1"}}
+	}
+	if draft.Fields == nil {
+		draft.Fields = map[domain.FieldID]domain.Field{}
+	}
+
+	if err := s.repo.CreateForm(ctx, f, draft); err != nil {
 		return store.Form{}, err
 	}
 	return f, nil

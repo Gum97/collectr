@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // Issue is one problem found in a draft schema.
@@ -72,6 +73,29 @@ func Validate(s Schema) ValidationResult {
 	}
 
 	// 2. Structural integrity: unique ids, no field on two pages, no orphans.
+	// A form that asks for consent must say which answer identifies the person
+	// giving it.
+	//
+	// Without it the submit path cannot attach the consent record to anybody and
+	// refuses at the last moment, so the respondent -- who did nothing wrong --
+	// is told the form cannot accept responses while the person who could fix it
+	// never hears about it. Refused here instead, where publishing is the act
+	// that would have shipped the fault.
+	if len(s.Consent.Purposes) > 0 {
+		identified := false
+		for _, f := range s.Fields {
+			if f.Identifier {
+				identified = true
+				break
+			}
+		}
+		if !identified {
+			add(IssueBadFieldConfig, SeverityError, "",
+				"form collects consent but marks no field as the data subject "+
+					"identifier, so a consent record cannot be attached to anyone")
+		}
+	}
+
 	pageIDs := make(map[PageID]int, len(s.Pages))
 	fieldPage := make(map[FieldID]PageID, len(s.Fields))
 	for _, p := range s.Pages {
@@ -226,6 +250,12 @@ func validateField(id FieldID, f Field) []Issue {
 		bad("field %q has unknown type %q", id, f.Type)
 	}
 
+	if strings.TrimSpace(f.Label) == "" {
+		// A question with no text is not a question. Publishing allowed it, and
+		// the respondent got an input box with nothing above it -- unanswerable
+		// in a way that reads as a rendering fault rather than a missing label.
+		bad("field %q has no label, so nobody can tell what it is asking", id)
+	}
 	if f.Identifier && f.PII == "" {
 		bad("field %q identifies the data subject, so it must declare what personal data it holds", id)
 	}

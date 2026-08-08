@@ -31,6 +31,7 @@ import {
   useForm,
   usePublishPreview,
   useVersions,
+  openingSchema,
 } from './useDraft'
 
 type Tab = 'edit' | 'flow' | 'publish'
@@ -52,7 +53,7 @@ export function Builder() {
   const writable = can(me.data, 'form.write')
   const publishable = can(me.data, 'form.publish')
 
-  const editor = useDraftEditor(formId, form.data?.draft, writable)
+  const editor = useDraftEditor(formId, openingSchema(form.data), writable)
   const [tab, setTab] = useState<Tab>('edit')
   const [pageId, setPageId] = useState<PageID | null>(null)
   const [fieldId, setFieldId] = useState<FieldID | null>(null)
@@ -133,7 +134,7 @@ export function Builder() {
         </p>
       )}
 
-      {form.data.draft === undefined ? (
+      {openingSchema(form.data) === null ? (
         <div className="p-6">
           <Empty
             title="Chưa nạp được schema nháp"

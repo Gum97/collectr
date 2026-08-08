@@ -16,7 +16,10 @@ func base() Schema {
 			{ID: "p2", Fields: []FieldID{"f_note"}},
 		},
 		Fields: map[FieldID]Field{
-			"f_name": {Type: TypeText, Label: "Name", Required: true, PII: "name"},
+			// Identifier, because the schema below declares consent purposes and a
+			// consent record has to attach to somebody. A fixture without one
+			// describes a form that publishes and then refuses every submission.
+			"f_name": {Type: TypeText, Label: "Name", Required: true, PII: "name", Identifier: true},
 			"f_used": {Type: TypeChoice, Label: "Used?", Options: []Option{
 				{ID: "o_yes", Label: "Yes"}, {ID: "o_no", Label: "No"},
 			}},

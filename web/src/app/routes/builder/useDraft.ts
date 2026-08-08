@@ -54,12 +54,27 @@ export interface FormDetail {
   retention_days: number | null
   retention_action: string
   created_at: string
-  /**
-   * Not served by GET /api/v1/forms/{id} today -- see the notes returned with
-   * this work. The builder cannot invent it, so it degrades to an explanation
-   * rather than to an empty form that would overwrite the real draft on save.
-   */
-  draft?: DraftSchema | null
+  /** The working copy. Absent when the form has never been edited since it was
+   *  published; has_draft says which, because an empty draft and a missing one
+   *  are different and saving over the wrong one deletes every question. */
+  draft_schema?: DraftSchema | null
+  has_draft?: boolean
+  /** The published schema, used as the starting point when no draft exists. */
+  live_schema?: DraftSchema | null
+  live_version_no?: number
+}
+
+/** The schema the builder should open.
+ *
+ * The draft when one exists, otherwise a copy of the live version -- which is
+ * what "dựa trên vN" in the header has always claimed. Returning nothing for a
+ * published-and-untouched form left the builder explaining an API gap that had
+ * since been filled, because it was reading a field name that never shipped.
+ */
+export function openingSchema(f: FormDetail | undefined): DraftSchema | null {
+  if (!f) return null
+  if (f.has_draft && f.draft_schema) return f.draft_schema
+  return f.live_schema ?? null
 }
 
 export interface VersionRow {
