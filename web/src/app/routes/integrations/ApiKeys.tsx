@@ -11,7 +11,7 @@
  *
  * BACKEND: /api/v1/api-keys does not exist yet. Nothing here calls it. The
  * contract below is the one documented in docs/10-public-api.md §10.1 and is
- * gated behind ENDPOINTS_READY so the screen can be wired up by flipping one
+ * was gated behind ENDPOINTS_READY until the endpoints existed; the flag stays as one
  * constant once the handler lands.
  */
 import { useState } from 'react'
@@ -38,7 +38,7 @@ import { SecretOnce } from './SecretOnce'
 
 /** Flip to true only when GET/POST/DELETE /api/v1/api-keys are mounted in the
  *  mux. Until then the screen never issues a request that would 404. */
-const ENDPOINTS_READY = false
+const ENDPOINTS_READY = true
 
 interface ApiKeyRow {
   id: string

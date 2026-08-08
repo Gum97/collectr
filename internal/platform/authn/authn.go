@@ -109,6 +109,12 @@ func (a Actor) InProject(projectID uuid.UUID) bool {
 	if a.ProjectID != nil {
 		return *a.ProjectID == projectID
 	}
+	// An API key with no project is scoped to the tenant, which is what issuing
+	// one without a project means. Project grants are a property of people, and
+	// treating an unscoped key as holding none locked every integration out.
+	if a.Kind == KindAPIKey {
+		return true
+	}
 	// An organisation-level role spans every project by design.
 	if a.orgWide {
 		return true

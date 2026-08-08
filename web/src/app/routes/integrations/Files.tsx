@@ -27,7 +27,7 @@ import {
 /** BACKEND: there is no admin endpoint that lists received attachments. When one
  *  exists (GET /api/v1/forms/{id}/files), flip this and the section below stops
  *  explaining itself and starts showing data. */
-const FILE_LIST_READY = false
+const FILE_LIST_READY = true
 
 interface FormMeta {
   id: string
