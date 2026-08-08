@@ -18,6 +18,7 @@ import { can, useMe } from '../../lib/session'
 import { DRAG_TYPE, FieldList } from './FieldList'
 import { FieldPanel } from './FieldPanel'
 import { FlowDiagram } from './FlowDiagram'
+import { ConsentTab } from './ConsentTab'
 import { PublishDialog } from './PublishDialog'
 import {
   FIELD_TYPES,
@@ -34,11 +35,12 @@ import {
   openingSchema,
 } from './useDraft'
 
-type Tab = 'edit' | 'flow' | 'publish'
+type Tab = 'edit' | 'flow' | 'consent' | 'publish'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'edit', label: 'Soạn' },
   { id: 'flow', label: 'Sơ đồ' },
+  { id: 'consent', label: 'Đồng ý' },
   { id: 'publish', label: 'Publish' },
 ]
 
@@ -175,6 +177,16 @@ export function Builder() {
                 onCheck={() => void preview.refetch()}
                 simulatorOpen={simulatorOpen}
                 onToggleSimulator={() => setSimulatorOpen((v) => !v)}
+              />
+            </div>
+          )}
+
+          {tab === 'consent' && (
+            <div className="h-full overflow-y-auto p-4">
+              <ConsentTab
+                schema={schema}
+                readOnly={!writable}
+                onApply={(next) => editor.apply(() => next)}
               />
             </div>
           )}

@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"encoding/json"
 	"errors"
 	"html/template"
 	"io/fs"
@@ -209,22 +210,70 @@ func days(d time.Duration) int {
 
 // script resolves the URL of a built entry chunk.
 //
-// Vite writes assets/<entry>-<hash>.js and the hash changes with every build,
-// so the name cannot be spelled out in a template. When the tree is missing the
-// result is empty and no script tag is emitted at all -- a visitor then sees
-// exactly what a visitor with JavaScript disabled sees, which is a state these
-// pages are written to survive, rather than a 404 in the console and a blank
-// container.
+// Vite writes assets/<entry>-<hash>.js and the hash changes with every build, so
+// the name cannot be spelled out in a template. It is read from the build
+// manifest, which names exactly one file per entry.
+//
+// This used to glob assets/<entry>-*.js and take the first match after sorting.
+// That is correct only while the directory holds one build: emptyOutDir is off
+// for local builds, so a second build leaves both chunks in place and the glob
+// returns whichever hash sorts lower -- permanently, since sorting is stable.
+// The public form went on serving a bundle from an earlier build, with no error
+// anywhere, and the only symptom was that new behaviour simply did not happen.
+//
+// When nothing can be resolved the result is empty and no script tag is emitted
+// at all: a visitor then sees exactly what a visitor with JavaScript disabled
+// sees, which is a state these pages are written to survive, rather than a 404
+// in the console and a blank container.
 func script(assets fs.FS, entry string) string {
 	if assets == nil {
 		return ""
 	}
+	if src := fromManifest(assets, entry); src != "" {
+		return src
+	}
+	// No manifest: an older build tree, or one produced by something other than
+	// Vite. Refuse to choose between candidates rather than choose wrongly --
+	// a page with no script degrades visibly, a page with the wrong script does
+	// not.
 	matches, err := fs.Glob(assets, "assets/"+entry+"-*.js")
-	if err != nil || len(matches) == 0 {
+	if err != nil || len(matches) != 1 {
 		return ""
 	}
-	sort.Strings(matches)
 	return "/" + matches[0]
+}
+
+// fromManifest reads the built file for one entry out of Vite's manifest.
+//
+// Entries are keyed by their source path, so the manifest is scanned for the
+// record whose name matches rather than indexed directly: "form" is the rollup
+// input name, and the key is "src/public/form.ts".
+func fromManifest(assets fs.FS, entry string) string {
+	raw, err := fs.ReadFile(assets, ".vite/manifest.json")
+	if err != nil {
+		return ""
+	}
+	var manifest map[string]struct {
+		File    string `json:"file"`
+		Name    string `json:"name"`
+		IsEntry bool   `json:"isEntry"`
+	}
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return ""
+	}
+	// Map iteration is random, so a manifest with two entries of the same name
+	// must not resolve to a different one per process start.
+	keys := make([]string, 0, len(manifest))
+	for k := range manifest {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if e := manifest[k]; e.IsEntry && e.Name == entry && e.File != "" {
+			return "/" + e.File
+		}
+	}
+	return ""
 }
 
 // squeeze removes comments and collapses whitespace in the stylesheet.

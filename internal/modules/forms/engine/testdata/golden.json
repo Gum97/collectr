@@ -45,9 +45,9 @@
     "fields": {
       "fld_name": {
         "type": "text",
-        "label": "Full name",
+        "label": "Email",
         "required": true,
-        "pii": "name",
+        "pii": "email",
         "identifier": true
       },
       "fld_used": {

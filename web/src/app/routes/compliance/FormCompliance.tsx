@@ -57,11 +57,24 @@ interface FormDetail {
   retention_days: number | null
   retention_action: string | null
   created_at: string
-  /** Not returned by GET /api/v1/forms/{id} today -- see the report. Optional so
-   *  the screen degrades into "chưa xác định" rather than into a false "không
-   *  có". */
-  consent?: { document_id?: string | null; purposes?: FormPurposeRef[] | null } | null
-  sensitive_fields?: SensitiveField[] | null
+  /** The purposes and the sensitive markers live in the schema, because they are
+   *  versioned with it: a published version carries the declaration that was in
+   *  force when its submissions were collected. Read from the live version when
+   *  there is one -- the draft describes what is being prepared, not what people
+   *  are consenting to right now. */
+  live_schema?: SchemaShape | null
+  draft_schema?: SchemaShape | null
+}
+
+interface SchemaShape {
+  fields?: Record<string, { label?: string; sensitive?: boolean; pii?: string | null }>
+  consent?: { purposes?: FormPurposeRef[] | null; sensitive_notice_required?: boolean } | null
+}
+
+/** The version whose declaration is actually binding, or undefined when the form
+ *  has never been published and has no draft either. */
+function governing(f: FormDetail): SchemaShape | undefined {
+  return f.live_schema ?? f.draft_schema ?? undefined
 }
 
 const FORM_TABS = [
@@ -134,7 +147,7 @@ export function FormCompliance() {
       <div className="flex flex-col gap-2.5">
         <PurposesCard form={detail} />
         <ConsentDocumentCard canManage={can(me.data, 'consent.manage')} />
-        <SensitiveFieldsCard fields={detail.sensitive_fields} />
+        <SensitiveFieldsCard fields={sensitiveFieldsOf(detail)} />
 
         <div className="grid gap-2.5 sm:grid-cols-2">
           <RetentionTile form={detail} />
@@ -152,7 +165,10 @@ export function FormCompliance() {
 /** Purposes declared by this form, each with the lawful basis it rests on. */
 function PurposesCard({ form }: { form: FormDetail }) {
   const purposes = usePurposes()
-  const refs = form.consent?.purposes ?? null
+  const schema = governing(form)
+  // null means "the schema could not be read at all"; an empty array means the
+  // schema was read and declares nothing. They lead to opposite conclusions.
+  const refs = schema ? (schema.consent?.purposes ?? []) : null
   const byCode = new Map((purposes.data ?? []).map((p) => [p.code, p]))
 
   return (
@@ -285,6 +301,16 @@ function ConsentDocumentCard({ canManage }: { canManage: boolean }) {
       )}
     </Card>
   )
+}
+
+/** The sensitive questions of the governing version, or undefined when no
+ *  version could be read -- which is not the same as "none". */
+function sensitiveFieldsOf(f: FormDetail): SensitiveField[] | undefined {
+  const schema = governing(f)
+  if (!schema?.fields) return undefined
+  return Object.entries(schema.fields)
+    .filter(([, v]) => v.sensitive)
+    .map(([id, v]) => ({ id, label: v.label ?? id, pii: v.pii ?? null }))
 }
 
 /** Sensitive fields, with what being sensitive actually costs. */

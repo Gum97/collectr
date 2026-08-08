@@ -19,6 +19,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // Identifier types. They are distinct types rather than bare strings so the
@@ -181,6 +182,24 @@ type Purpose struct {
 type Limits struct {
 	MaxFields int `json:"max_fields,omitempty"`
 	MaxRules  int `json:"max_rules,omitempty"`
+}
+
+// IdentifierKinds are the pii kinds a field may declare when it is the data
+// subject identifier.
+//
+// The list is short because it is a contact channel, not a name for the person.
+// A data subject request is answered by sending a magic link to the identifier
+// the subject gave, so an identifier nobody can be reached at leaves them unable
+// to exercise a right the law grants them -- and consent.data_subjects enforces
+// the same two values as a check constraint.
+//
+// A national id is the strongest identifier in Vietnam and still not usable
+// here: it names a person without offering any way to reach them.
+var IdentifierKinds = []string{"email", "phone"}
+
+// ValidIdentifierKind reports whether a pii kind can identify a data subject.
+func ValidIdentifierKind(kind string) bool {
+	return slices.Contains(IdentifierKinds, kind)
 }
 
 // Errors returned by form operations.

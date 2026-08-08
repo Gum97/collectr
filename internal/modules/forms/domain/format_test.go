@@ -107,3 +107,36 @@ func TestValidateFormatRejectsMisconfiguration(t *testing.T) {
 		})
 	}
 }
+
+// A form published with an identifier the subject table refuses accepted answers
+// and then failed at the insert -- the respondent saw "Internal server error"
+// after filling in every question. Publish is where this must be caught.
+func TestIdentifierKindMustBeReachable(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		kind string
+		want bool // want an issue
+	}{
+		{"email", false},
+		{"phone", false},
+		{"national_id", true},
+		{"name", true},
+		{"", true}, // already covered by the "must declare" rule
+	}
+	for _, tc := range tests {
+		t.Run(tc.kind, func(t *testing.T) {
+			t.Parallel()
+			f := Field{Type: TypeText, Label: "Liên hệ", Identifier: true, PII: tc.kind}
+			issues := validateField("f1", f)
+			got := false
+			for _, i := range issues {
+				if i.Severity == SeverityError {
+					got = true
+				}
+			}
+			if got != tc.want {
+				t.Fatalf("kind %q: error=%v, want %v (%v)", tc.kind, got, tc.want, issues)
+			}
+		})
+	}
+}

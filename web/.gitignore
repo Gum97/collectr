@@ -1,0 +1,3 @@
+
+# Incremental typecheck cache. Machine-local and it churns on every tsc run.
+*.tsbuildinfo

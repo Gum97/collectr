@@ -3,6 +3,7 @@ package webpages
 import (
 	"context"
 	"html/template"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -355,5 +356,53 @@ func TestShortHash(t *testing.T) {
 	}
 	if got := short("abc"); got != "abc" {
 		t.Errorf("short() = %q, want the value unchanged when it is already short", got)
+	}
+}
+
+// The public form page has no index.html naming its chunk, so script() resolves
+// it. When two builds are present -- which local builds do produce, because
+// emptyOutDir is off -- the old glob returned whichever hash sorted lower, and
+// the page served an earlier build's JavaScript with no error anywhere. The
+// only symptom was that new behaviour did not happen.
+func TestScriptDoesNotServeAStaleChunk(t *testing.T) {
+	t.Parallel()
+
+	const manifest = `{
+	  "src/public/form.ts": {"file":"assets/form-NEW.js","name":"form","isEntry":true},
+	  "index.html":         {"file":"assets/admin-NEW.js","name":"admin","isEntry":true}
+	}`
+
+	twoBuilds := fstest.MapFS{
+		"assets/form-AAAold.js": {Data: []byte("old")},
+		"assets/form-ZZZnew.js": {Data: []byte("new")},
+	}
+	withManifest := fstest.MapFS{
+		"assets/form-AAAold.js": {Data: []byte("old")},
+		"assets/form-NEW.js":    {Data: []byte("new")},
+		".vite/manifest.json":   {Data: []byte(manifest)},
+	}
+
+	tests := []struct {
+		name   string
+		assets fs.FS
+		want   string
+	}{
+		{"manifest names the current chunk", withManifest, "/assets/form-NEW.js"},
+		// Refusing beats guessing: a page with no script degrades visibly, a page
+		// with the wrong script does not.
+		{"two candidates and no manifest resolves to nothing", twoBuilds, ""},
+		{"one candidate and no manifest is unambiguous",
+			fstest.MapFS{"assets/form-ONLY.js": {Data: []byte("x")}}, "/assets/form-ONLY.js"},
+		{"no assets at all", fstest.MapFS{}, ""},
+		{"nil tree", nil, ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := script(tc.assets, "form"); got != tc.want {
+				t.Fatalf("script() = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

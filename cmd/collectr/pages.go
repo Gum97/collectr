@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"html/template"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -40,7 +41,52 @@ func (a formPages) PublicFormPage(ctx context.Context, publicID string) (webpage
 			Code: p.Code, Label: p.Code, Required: p.Required,
 		})
 	}
+
+	// Law 91/2025 requires telling a subject, before they answer, that sensitive
+	// personal data is being collected. Validate refuses to publish a schema with
+	// a sensitive question and no such notice -- and this line is what makes that
+	// promise true. Without it the check was enforced at publish and then dropped
+	// at render: the operator was made to declare a notice nobody was ever shown.
+	//
+	// Built from the questions rather than from a free-text field, so it cannot
+	// drift away from what the form actually asks.
+	if pf.Schema.Consent.SensitiveNoticeRequired {
+		page.SensitiveNotice = sensitiveKinds(pf.Schema)
+	}
 	return page, nil
+}
+
+// sensitiveKinds lists what a form's sensitive questions collect, for the notice
+// on the public page.
+//
+// The declared pii kind is preferred over the question's label: "health" says
+// what category of data it is, which is what the notice has to convey, while a
+// label reads as the question rather than the category. Labels are the fallback,
+// because a notice naming something imprecise beats a notice naming nothing.
+func sensitiveKinds(s formsdomain.Schema) string {
+	// Walked page by page rather than over the Fields map: map iteration order is
+	// random in Go, and a notice whose wording reshuffles on every request reads
+	// as a different notice each time it is compared.
+	seen := map[string]bool{}
+	var kinds []string
+	for _, page := range s.Pages {
+		for _, id := range page.Fields {
+			f, ok := s.Fields[id]
+			if !ok || !f.Sensitive {
+				continue
+			}
+			kind := f.PII
+			if kind == "" {
+				kind = f.Label
+			}
+			if kind == "" || seen[kind] {
+				continue
+			}
+			seen[kind] = true
+			kinds = append(kinds, kind)
+		}
+	}
+	return strings.Join(kinds, ", ")
 }
 
 type consentDocs struct{ store *consentstore.Store }

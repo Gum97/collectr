@@ -49,9 +49,14 @@ export function SubmissionGrid({
             <Th>VERSION</Th>
             {columns.map((c) => (
               <Th key={c.key}>
+                {/* The question, not its id. The id was the header until a real
+                    grid was looked at: six columns of FLD_01KZ… are unreadable,
+                    and the label was reachable only by hovering — which is not
+                    reachable at all on the phone or in a screenshot. The id stays
+                    below because it is what the API and the export are keyed by. */}
                 <span className="flex items-center gap-1">
-                  <span title={`${c.label} · ${c.type} · hỏi ở ${c.versions}`}>
-                    {c.fieldId.toUpperCase()}
+                  <span title={`${c.fieldId} · ${c.type} · hỏi ở ${c.versions}`}>
+                    {c.label}
                     {c.typeVariant && <span className="text-accent">@{c.typeVariant}</span>}
                   </span>
                   {c.sensitive && (

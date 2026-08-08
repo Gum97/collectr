@@ -19,7 +19,12 @@ func base() Schema {
 			// Identifier, because the schema below declares consent purposes and a
 			// consent record has to attach to somebody. A fixture without one
 			// describes a form that publishes and then refuses every submission.
-			"f_name": {Type: TypeText, Label: "Name", Required: true, PII: "name", Identifier: true},
+			//
+			// The kind is "email" rather than "name": the subject table accepts only
+			// a reachable identifier, and this fixture used to say "name" -- which
+			// described a form that published cleanly and then returned 500 to the
+			// first respondent, at the insert.
+			"f_name": {Type: TypeText, Label: "Email", Required: true, PII: "email", Identifier: true},
 			"f_used": {Type: TypeChoice, Label: "Used?", Options: []Option{
 				{ID: "o_yes", Label: "Yes"}, {ID: "o_no", Label: "No"},
 			}},

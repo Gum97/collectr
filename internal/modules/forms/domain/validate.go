@@ -262,6 +262,15 @@ func validateField(id FieldID, f Field) []Issue {
 	if f.Identifier && f.PII == "" {
 		bad("field %q identifies the data subject, so it must declare what personal data it holds", id)
 	}
+	if f.Identifier && f.PII != "" && !ValidIdentifierKind(f.PII) {
+		// Caught here because the alternative is catching it at submission: the
+		// subject table constrains this column, so a form published with any
+		// other kind accepted answers right up to the insert and then returned
+		// 500 to a respondent who had already filled the whole thing in.
+		bad("field %q identifies the data subject with kind %q, but a subject must be "+
+			"reachable to answer a data subject request -- use one of %v",
+			id, f.PII, IdentifierKinds)
+	}
 	if f.Identifier && !f.Sensitive {
 		// A warning, not an error: a phone number is basic personal data under
 		// Law 91/2025 and encrypting it is not required.

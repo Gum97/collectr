@@ -98,7 +98,39 @@ export function FieldPanel({ schema, fieldId, readOnly, onApply, onSelect }: Pro
           disabled={readOnly}
           onChange={(v) => onApply(updateField(schema, fieldId, { hidden: v }))}
         />
+        <Check
+          label="Định danh chủ thể"
+          checked={Boolean(field.identifier)}
+          disabled={readOnly}
+          onChange={(v) => onApply(updateField(schema, fieldId, { identifier: v }))}
+        />
       </div>
+
+      {field.identifier && (
+        <p className="rounded border border-accent/40 bg-accent/5 px-2 py-1.5 text-meta text-accent">
+          Đây là câu hỏi dùng để nhận ra một người qua nhiều lượt gửi. Một biểu mẫu có thu đồng ý{' '}
+          <span className="font-semibold">bắt buộc</span> phải có đúng một câu hỏi như vậy: không có
+          nó thì bản ghi đồng ý không gắn được vào ai, và khi người đó yêu cầu xoá thì không tìm ra
+          dữ liệu của họ.
+          {!field.pii ? (
+            <span className="mt-1 block text-overdue">
+              Cần điền “Loại dữ liệu cá nhân (pii)” bên dưới là{' '}
+              <span className="font-mono">email</span> hoặc <span className="font-mono">phone</span>.
+            </span>
+          ) : (
+            field.pii !== 'email' &&
+            field.pii !== 'phone' && (
+              <span className="mt-1 block text-overdue">
+                <span className="font-mono">{field.pii}</span> không dùng làm định danh được. Trả
+                lời yêu cầu chủ thể là gửi một link xác thực tới chính người đó, nên định danh phải
+                là <span className="font-mono">email</span> hoặc{' '}
+                <span className="font-mono">phone</span> — CCCD nêu tên một người nhưng không cho
+                cách nào liên hệ họ.
+              </span>
+            )
+          )}
+        </p>
+      )}
 
       {field.sensitive && (
         <p className="flex items-start gap-2 rounded border border-accent/40 bg-accent/5 px-2 py-1.5 text-meta text-accent">

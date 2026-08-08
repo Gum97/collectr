@@ -17,10 +17,18 @@ export default defineConfig({
     // a local `go build` embeds whatever was left there last.
     outDir: resolve(__dirname, '../internal/webui/dist'),
     // Left on: the output directory holds the .gitignore that keeps 900 KB of
-    // hashed assets out of the repository, and emptyOutDir deletes it. Stale
-    // assets are harmless here -- filenames carry a content hash and index.html
-    // names the current ones -- and the Docker build always starts clean.
+    // hashed assets out of the repository, and emptyOutDir deletes it. The
+    // Docker build always starts clean, so this only affects local builds.
+    //
+    // Stale output therefore accumulates, and it is NOT harmless. index.html
+    // names the admin chunk it wants, but the public form page is rendered by Go
+    // and has no such list -- it used to glob assets/form-*.js and take the
+    // alphabetically first match, which after a second build is whichever hash
+    // happened to sort lower. The public form silently served a bundle from an
+    // earlier build. The manifest below is what fixed it: it names the current
+    // chunk for every entry, so the Go page never has to guess.
     emptyOutDir: false,
+    manifest: true,
     rollupOptions: {
       input: {
         admin: resolve(__dirname, 'index.html'),
