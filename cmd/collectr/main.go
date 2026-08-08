@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"flag"
 	"fmt"
@@ -345,7 +346,7 @@ func run() error {
 	// Scrape endpoint. Bind it behind the reverse proxy or a firewall: the
 	// numbers are not personal data, but they do describe the shape of a
 	// deployment in more detail than a stranger needs.
-	public.Handle("GET /metrics", reg.Handler())
+	public.Handle("GET /metrics", guardMetrics(cfg.MetricsToken, reg.Handler(), log))
 
 	// The public pages are server-rendered, before the SPA fallback claims "/".
 	// They are the pages a customer waits for, so they carry no framework: see
@@ -483,4 +484,35 @@ func hostOf(baseURL string) string {
 		return ""
 	}
 	return u.Hostname()
+}
+
+// guardMetrics puts a bearer token in front of the scrape endpoint.
+//
+// The numbers are not personal data, but they describe an organisation:
+// collectr_dsr_overdue_count is the count of statutory deadlines already
+// missed, and it was readable by anyone who could reach the port. The comment
+// at the mount point said to put a firewall in front of it; the shipped Caddy
+// config proxies everything, so nobody did.
+//
+// Unset leaves it open and says so once at startup, because an operator who
+// deliberately runs it behind their own network should not be forced to invent
+// a token -- but one who simply never read this should hear about it.
+func guardMetrics(token string, next http.Handler, log *slog.Logger) http.Handler {
+	if token == "" {
+		log.Warn("metrics endpoint is unauthenticated",
+			"hint", "set METRICS_TOKEN, or keep the port off the public internet")
+		return next
+	}
+	want := []byte("Bearer " + token)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got := []byte(r.Header.Get("Authorization"))
+		// Constant time: the comparison is short and an attacker can retry it as
+		// often as they like.
+		if subtle.ConstantTimeCompare(got, want) != 1 {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="metrics"`)
+			http.Error(w, "unauthorised", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

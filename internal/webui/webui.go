@@ -98,6 +98,21 @@ func serveIndex(w http.ResponseWriter, r *http.Request, sub fs.FS) {
 	}
 	// Never cached: it is the document that names the current asset hashes, so a
 	// stale copy pins a browser to a build that has been deleted.
+	// The admin app had no policy at all, which made it the one page in the
+	// deployment where an injected script would run freely -- and the one that
+	// carries the session cookie. Nothing here loads from another origin, so the
+	// policy can be strict without a per-page exception.
+	//
+	// 'unsafe-inline' for styles only: Tailwind emits a stylesheet, but React
+	// sets inline style attributes, and a nonce cannot cover those.
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
+			"img-src 'self' data:; font-src 'self'; connect-src 'self'; "+
+			"frame-ancestors 'none'; base-uri 'none'; form-action 'self'; "+
+			"object-src 'none'")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if r.Method == http.MethodHead {
