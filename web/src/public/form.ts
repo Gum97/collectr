@@ -109,7 +109,7 @@ function render(
     for (const id of result.visible) {
       const field = form.schema.fields[id]
       if (!field) continue
-      fields.append(renderField(id, field, result.required.includes(id), answers, draw))
+      fields.append(renderField(id, field, result.required.includes(id), answers, draw, publicId))
     }
 
     if (!focusedID) return
@@ -143,6 +143,7 @@ function renderField(
   required: boolean,
   answers: Answers,
   draw: () => void,
+  publicId: string,
 ): HTMLElement {
   const wrap = document.createElement('div')
   wrap.className = 'cf-field'
@@ -246,8 +247,44 @@ function renderField(
       input.type = 'file'
       input.id = id
       input.className = 'cf-input'
+      // A hint to the file picker only. The server decides by reading the magic
+      // bytes, because an extension is chosen by whoever renamed the file.
       if (field.accept?.length) input.accept = field.accept.join(',')
-      input.addEventListener('change', () => commit(input.files?.[0]?.name ?? '', true))
+
+      const note = hintLine(wrap)
+      input.addEventListener('change', () => {
+        const file = input.files?.[0]
+        if (!file) {
+          answers[id] = undefined
+          note('')
+          draw()
+          return
+        }
+        // Uploaded as soon as it is chosen, not held until submit. The answer
+        // that goes with the submission is the id the server gives back: the
+        // bytes travel once, and a slow upload happens while the respondent is
+        // still filling in the rest rather than after they press Gửi.
+        //
+        // This used to store file.name and upload nothing at all, so the file
+        // question accepted a filename and the form was then refused for not
+        // referencing an upload -- with the file never leaving the phone.
+        note('Đang tải tệp lên…')
+        input.disabled = true
+        void upload(publicId, id, file)
+          .then((fileID) => {
+            answers[id] = { file_id: fileID }
+            note('')
+          })
+          .catch((err: Error) => {
+            answers[id] = undefined
+            input.value = ''
+            note(err.message)
+          })
+          .finally(() => {
+            input.disabled = false
+            draw()
+          })
+      })
       wrap.append(input)
       break
     }
@@ -291,6 +328,49 @@ function renderField(
  * the input the respondent is still standing in -- the bug that once ate a text
  * answer on every blur.
  */
+/**
+ * Sends one attachment and returns the id the answer must carry.
+ *
+ * Rejections are shown as the server worded them. The server identifies a file
+ * by its leading bytes rather than its extension, so "renamed it to .pdf" is
+ * refused here and the respondent is told why -- which is a far better outcome
+ * than the upload appearing to work and the submission failing later.
+ */
+async function upload(publicId: string, fieldId: string, file: File): Promise<string> {
+  const body = new FormData()
+  body.append('file', file)
+
+  let res: Response
+  try {
+    res = await fetch(
+      `/api/pub/forms/${encodeURIComponent(publicId)}/uploads?field_id=${encodeURIComponent(fieldId)}`,
+      { method: 'POST', body, credentials: 'same-origin' },
+    )
+  } catch {
+    throw new Error('Không gửi được tệp. Kiểm tra kết nối rồi thử lại.')
+  }
+
+  if (!res.ok) {
+    let msg = 'Không tải được tệp này lên.'
+    try {
+      const err = (await res.json()) as { fields?: Record<string, string>; title?: string }
+      // The field map names what was wrong with the file itself; the title is
+      // the fallback for everything else.
+      const first = err.fields ? Object.values(err.fields)[0] : undefined
+      if (first) msg = first
+      else if (err.title) msg = err.title
+    } catch {
+      // A body that is not JSON says nothing useful; the default already does.
+    }
+    if (res.status === 413) msg = 'Tệp vượt quá dung lượng cho phép.'
+    throw new Error(msg)
+  }
+
+  const out = (await res.json()) as { file_id?: string }
+  if (!out.file_id) throw new Error('Máy chủ không trả về mã tệp. Thử lại giúp nhé.')
+  return out.file_id
+}
+
 function hintLine(wrap: HTMLElement): (msg: string) => void {
   const p = document.createElement('p')
   p.className = 'cf-error'

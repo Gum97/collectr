@@ -342,7 +342,7 @@ func (h *Handler) publish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	version, validation, err := h.svc.Publish(r.Context(), actor.TenantID, formID, actor.UserID)
+	version, validation, err := h.svc.Publish(r.Context(), actor.TenantID, formID, actor.UserID, httpx.IPPrefix(r))
 	switch {
 	case errors.Is(err, app.ErrDraftInvalid):
 		// 422 with the full issue list: the publisher needs to know exactly what

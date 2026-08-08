@@ -4,10 +4,12 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/oklog/ulid/v2"
 
 	"github.com/collectr/collectr/internal/contracts"
@@ -21,7 +23,8 @@ type Repository interface {
 	GetForm(ctx context.Context, tenantID, formID uuid.UUID) (store.Form, error)
 	GetDraft(ctx context.Context, tenantID, formID uuid.UUID) (domain.Schema, error)
 	SaveDraft(ctx context.Context, tenantID, formID uuid.UUID, schema domain.Schema) error
-	Publish(ctx context.Context, tenantID, formID, publishedBy uuid.UUID, schema domain.Schema) (store.Version, error)
+	Publish(ctx context.Context, tenantID, formID, publishedBy uuid.UUID, schema domain.Schema,
+		onPublished func(pgx.Tx, store.Version) error) (store.Version, error)
 	GetVersion(ctx context.Context, tenantID, versionID uuid.UUID) (store.Version, error)
 	ListVersions(ctx context.Context, tenantID, formID uuid.UUID) ([]store.Version, error)
 	ResolvePublic(ctx context.Context, publicID string) (store.PublicForm, error)
@@ -34,12 +37,20 @@ type Service struct {
 	repo             Repository
 	defaultRetention time.Duration
 	docs             contracts.DocumentProvider
+	audit            contracts.AuditWriter
 }
 
 // NewService returns a Service.
 func NewService(repo Repository, defaultRetention time.Duration) *Service {
 	return &Service{repo: repo, defaultRetention: defaultRetention}
 }
+
+// SetAudit attaches the trail publishing is recorded in.
+//
+// A setter rather than a constructor argument, matching SetDocuments: the audit
+// writer and this service are wired in the composition root, and the forms
+// module reaches it only through the contract.
+func (s *Service) SetAudit(w contracts.AuditWriter) { s.audit = w }
 
 // ErrDraftInvalid means the draft cannot be published as it stands.
 var ErrDraftInvalid = errors.New("draft schema is not publishable")
@@ -128,7 +139,7 @@ func (s *Service) Preview(ctx context.Context, tenantID, formID uuid.UUID) (Publ
 // Validation blocks here and nowhere later. Once published, the version cannot
 // be corrected -- and a respondent who hits a broken branch does not file a bug,
 // they close the tab.
-func (s *Service) Publish(ctx context.Context, tenantID, formID, publishedBy uuid.UUID) (store.Version, domain.ValidationResult, error) {
+func (s *Service) Publish(ctx context.Context, tenantID, formID, publishedBy uuid.UUID, ipPrefix string) (store.Version, domain.ValidationResult, error) {
 	draft, err := s.repo.GetDraft(ctx, tenantID, formID)
 	if err != nil {
 		return store.Version{}, domain.ValidationResult{}, err
@@ -137,11 +148,40 @@ func (s *Service) Publish(ctx context.Context, tenantID, formID, publishedBy uui
 		return store.Version{}, res, ErrDraftInvalid
 	}
 
-	v, err := s.repo.Publish(ctx, tenantID, formID, publishedBy, draft)
+	v, err := s.repo.Publish(ctx, tenantID, formID, publishedBy, draft,
+		func(tx pgx.Tx, version store.Version) error {
+			if s.audit == nil {
+				return nil
+			}
+			return s.audit.Write(ctx, tx, contracts.AuditEntry{
+				TenantID: tenantID,
+				Actor:    contracts.AuditActor{Type: "user", ID: publishedBy.String(), IPPrefix: ipPrefix},
+				Action:   "form.published",
+				Target:   map[string]any{"form_id": formID, "version_id": version.ID},
+				Payload: map[string]any{
+					"version_no": version.VersionNo,
+					// The hash is what makes the entry evidence rather than a
+					// note: it pins which bytes were published, so a later claim
+					// about what a form asked can be checked against it.
+					"schema_hash": fmt.Sprintf("sha256:%x", version.SchemaHash),
+					"purposes":    purposeCodes(draft),
+					"sensitive":   draft.HasSensitiveFields(),
+				},
+			})
+		})
 	if err != nil {
 		return store.Version{}, domain.ValidationResult{}, err
 	}
 	return v, domain.ValidationResult{OK: true}, nil
+}
+
+// purposeCodes lists what a version declares it collects for, in schema order.
+func purposeCodes(s domain.Schema) []string {
+	out := make([]string, 0, len(s.Consent.Purposes))
+	for _, p := range s.Consent.Purposes {
+		out = append(out, p.Code)
+	}
+	return out
 }
 
 // PublicForm is a form ready to render, plus everything the client needs to

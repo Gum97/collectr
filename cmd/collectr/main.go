@@ -335,6 +335,7 @@ func run() error {
 	iamHandler.RegisterProjects(admin)
 	iamHandler.RegisterAPIKeys(admin)
 	iamHandler.RegisterRecoveryAdmin(admin)
+	formSvc.SetAudit(auditWriter)
 	fileHandler.SetAudit(db, auditWriter)
 	fileHandler.RegisterAdmin(admin)
 	exportHandler.RegisterAdmin(admin)

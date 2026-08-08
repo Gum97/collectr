@@ -16,6 +16,7 @@ import type { FieldID, PageID } from '../../../shared/engine'
 import { Empty, ErrorBanner, Loading, StatusPill } from '../../components/ui'
 import { can, useMe } from '../../lib/session'
 import { DRAG_TYPE, FieldList } from './FieldList'
+import { addField } from './useDraft'
 import { FieldPanel } from './FieldPanel'
 import { FlowDiagram } from './FlowDiagram'
 import { ConsentTab } from './ConsentTab'
@@ -245,22 +246,36 @@ function EditTab({
         <h2 className="mb-1.5 font-mono text-[8px] tracking-caps text-faint">LOẠI CÂU HỎI</h2>
         <div className="flex flex-col gap-1">
           {FIELD_TYPES.map((t) => (
-            <div
+            // A button, not a bare draggable div. Dragging was the only way to
+            // create anything other than a text question -- "+ Thêm câu hỏi"
+            // always adds text -- so six of the seven question types could not be
+            // added without a mouse, and nothing here was reachable by keyboard
+            // or announced to a screen reader. Drag still works; it is no longer
+            // the only way in.
+            <button
               key={t.type}
+              type="button"
+              disabled={readOnly || !activePage}
+              onClick={() => {
+                if (!activePage) return
+                const created = addField(schema, activePage, t.type)
+                onApply(created.schema)
+                onField(created.fieldId)
+              }}
               draggable={!readOnly && Boolean(activePage)}
               onDragStart={(e) => {
                 e.dataTransfer.setData(DRAG_TYPE, t.type)
                 e.dataTransfer.effectAllowed = 'copy'
               }}
               title={t.hint}
-              className="cursor-grab rounded border border-dashed border-line px-2 py-1 text-meta hover:border-line active:cursor-grabbing"
+              className="cursor-grab rounded border border-dashed border-line px-2 py-1 text-left text-meta hover:border-line active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
             >
               {t.label}
-            </div>
+            </button>
           ))}
         </div>
         <p className="mt-1.5 text-meta leading-snug text-muted">
-          Kéo vào cột giữa, hoặc dùng nút “+ Thêm câu hỏi”.
+          Bấm để thêm vào cuối trang, hoặc kéo vào đúng vị trí trong cột giữa.
         </p>
 
         <h2 className="mb-1.5 mt-4 font-mono text-[8px] tracking-caps text-faint">TRANG</h2>

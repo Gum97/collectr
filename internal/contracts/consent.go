@@ -118,10 +118,19 @@ type DocumentProvider interface {
 }
 
 // AuditActor is who performed an audited action.
+// Tagged because this struct is stored as JSON in audit.entries and read back
+// by SQL. Without tags the keys were the Go identifiers -- Type, ID, IPPrefix --
+// which is the only place in the codebase that spelling reaches a stored
+// document, so an ad-hoc query written in the house snake_case finds nothing and
+// reads as "the entry does not say who did it".
+//
+// The listing query already coalesces both spellings, which is why the audit
+// screen never showed the problem; rows written before this change keep the old
+// keys, so that coalesce has to stay.
 type AuditActor struct {
-	Type     string // user | subject | system
-	ID       string
-	IPPrefix string
+	Type     string `json:"type"` // user | subject | system
+	ID       string `json:"id"`
+	IPPrefix string `json:"ip_prefix"`
 }
 
 // AuditEntry is one line of the tamper-evident trail.

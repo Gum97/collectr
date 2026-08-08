@@ -169,7 +169,15 @@ func (s *Store) SaveDraft(ctx context.Context, tenantID, formID uuid.UUID, schem
 // Version numbering is derived inside the transaction from the current maximum,
 // so two concurrent publishes cannot mint the same number: the unique constraint
 // on (form_id, version_no) is what ultimately decides.
-func (s *Store) Publish(ctx context.Context, tenantID, formID, publishedBy uuid.UUID, schema domain.Schema) (Version, error) {
+// onPublished, when supplied, runs inside the publishing transaction with the
+// version that was just written. It exists so the audit entry commits with the
+// version or not at all.
+func (s *Store) Publish(
+	ctx context.Context,
+	tenantID, formID, publishedBy uuid.UUID,
+	schema domain.Schema,
+	onPublished func(pgx.Tx, Version) error,
+) (Version, error) {
 	payload, err := json.Marshal(schema)
 	if err != nil {
 		return Version{}, fmt.Errorf("encoding schema: %w", err)
@@ -211,6 +219,14 @@ func (s *Store) Publish(ctx context.Context, tenantID, formID, publishedBy uuid.
 		}
 		if tag.RowsAffected() == 0 {
 			return domain.ErrFormNotFound
+		}
+		// Runs inside the same transaction, so a trail that cannot be written is
+		// a version that does not get published. Publishing mints an immutable
+		// artifact that decides what every later respondent consents to; if that
+		// can happen without a record of who did it, the chain has a hole exactly
+		// where it matters most.
+		if onPublished != nil {
+			return onPublished(tx, v)
 		}
 		return nil
 	})
