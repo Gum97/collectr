@@ -39,6 +39,9 @@ interface Org {
   id: string
   name: string
   slug: string
+  /** The address this browser resolved to, by the same code that stamps consent
+   *  records. Shown so a wrong proxy configuration is visible instead of silent. */
+  your_ip: string
   settings: Record<string, unknown> | null
   deployment: Deployment
 }
@@ -188,6 +191,12 @@ export function OrgSettings() {
                 <Fact label="Hạn lưu mặc định" value={`${d.default_retention_days} ngày`} />
                 <Fact label="Hạn trả lời DSR" value={`${d.dsr_sla_hours} giờ`} />
                 <Fact label="Ân hạn bật 2FA" value={`${d.mfa_grace_hours} giờ`} />
+                <Fact
+                  label="IP của bạn như hệ thống ghi nhận"
+                  value={org.data.your_ip}
+                  mono
+                  note="Không khớp IP thật của bạn nghĩa là TRUSTED_PROXY_HOPS đang sai. Địa chỉ này đi vào bản ghi đồng ý — bằng chứng ai đã đồng ý, từ đâu — và là khoá của giới hạn theo IP. Sai thì mọi khách qua cùng một proxy dùng chung một hạn mức."
+                />
                 <Fact
                   label="Giới hạn gửi công khai"
                   value={`${d.public_write_ip_limit}/phút mỗi dải /24 · ${d.public_write_form_limit}/phút mỗi biểu mẫu`}

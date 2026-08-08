@@ -22,6 +22,14 @@
 	}
 }
 
+# SITE_ADDRESS must be the hostname visitors actually arrive with.
+#
+# Caddy matches sites by Host. A request whose Host matches no site here gets an
+# empty 200 -- not a 404, not an error, a blank page with a success status. A
+# deployment behind a tunnel where SITE_ADDRESS was still the machine's IP served
+# blank pages and logged nothing but 200s. If the pages are empty, check this
+# first.
+#
 # Two hostnames, one deployment: put both in SITE_ADDRESS, comma separated --
 #   SITE_ADDRESS=form.example.com, rutgon.example.com
 # Caddy obtains a certificate for each. The application already knows which is
@@ -76,6 +84,22 @@
 
 	reverse_proxy collectr:8080 {
 		header_up X-Forwarded-Host {host}
+
+		# Keep the client address when something else is already in front --
+		# a Cloudflare tunnel, nginx, another proxy.
+		#
+		# Without this Caddy replaces X-Forwarded-For with the address it saw,
+		# and the application records the proxy as the visitor. That address is
+		# what a consent record cites as evidence of who agreed and from where,
+		# and it is what the per-IP rate limit counts, so every visitor arriving
+		# through one proxy shares one 60/minute budget.
+		#
+		# Caddy still appends its own hop, so the header reaching the app looks
+		# like "<client>, <caddy>" -- which is why a deployment with anything in
+		# front also needs TRUSTED_PROXY_HOPS=2. One without the other is worse
+		# than neither: hops=2 with a single-entry header indexes past the end
+		# and falls back to the socket peer, silently.
+		trusted_proxies private_ranges
 	}
 
 	log {

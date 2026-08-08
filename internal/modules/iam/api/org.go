@@ -69,6 +69,15 @@ func (h *Handler) getOrg(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, r, http.StatusOK, map[string]any{
 		"id":   t.ID,
 		"name": t.Name,
+		// The address this very request resolved to, by the same code that
+		// stamps consent records and keys the rate limiter.
+		//
+		// Here because a wrong TRUSTED_PROXY_HOPS is otherwise invisible: the
+		// product keeps working, and the only trace is a proxy's address sitting
+		// in the evidence that says who agreed and from where. An operator who
+		// opens this page from their own machine can see in one line whether the
+		// deployment is recording visitors or recording its own front door.
+		"your_ip": httpx.ClientIP(r).String(),
 		// The slug is shown but not editable: it is in the consent permalinks a
 		// data subject was already given.
 		"slug":       t.Slug,

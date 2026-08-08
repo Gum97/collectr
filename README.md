@@ -150,6 +150,23 @@ curl -X POST http://localhost/api/v1/members/invitations -b cookies.txt \
 }'
 ```
 
+### Đặt sau proxy khác (Cloudflare, nginx, tunnel)
+
+Collectr đọc địa chỉ khách từ `X-Forwarded-For`, lùi lại `TRUSTED_PROXY_HOPS` chặng. Đặt sai thì **không có lỗi nào cả** — địa chỉ sai lặng lẽ đi vào bản ghi đồng ý (bằng chứng ai đã đồng ý, từ đâu) và thành khoá của giới hạn theo IP, khiến mọi khách qua cùng một proxy dùng chung một hạn mức 60/phút.
+
+| Cách triển khai | `TRUSTED_PROXY_HOPS` | Ghi chú |
+|---|---|---|
+| Chỉ Caddy (mặc định) | `1` | Không cần đổi gì |
+| Cloudflare / nginx → Caddy → app | `2` | Caddy nối thêm một chặng của chính nó |
+| Tunnel hoặc nginx → thẳng app, bỏ Caddy | `1` | Mất HSTS, cái còn lại app tự đặt |
+| Chạy binary trần ra mạng | `0` | Bỏ qua `X-Forwarded-For` hoàn toàn |
+
+Với bất cứ thứ gì đứng trước Caddy, `deploy/Caddyfile` phải có `trusted_proxies private_ranges` — nếu không Caddy **thay** header bằng địa chỉ nó thấy và IP khách mất trước khi tới app. Thiếu một trong hai vế còn tệ hơn thiếu cả hai: `hops=2` với header một entry sẽ trỏ ra ngoài mảng rồi rơi về địa chỉ socket, im lặng.
+
+**`SITE_ADDRESS` phải đúng hostname khách thật sự truy cập.** Caddy khớp site theo Host; Host không khớp site nào thì nó trả **200 với thân rỗng** — không phải 404. Trang trắng, log toàn 200. Nếu các trang trống rỗng, kiểm chỗ này trước.
+
+Đừng suy luận, hãy đo: mở **Cài đặt tổ chức** từ máy của bạn và so dòng *"IP của bạn như hệ thống ghi nhận"* với IP thật. Khớp là đúng; ra địa chỉ proxy hay dải nội bộ là sai.
+
 > [!WARNING]
 > `make secrets` sinh ra `TENANT_KEK` trong `.env`. **Sao lưu khóa này ở nơi tách biệt với bản sao lưu cơ sở dữ liệu.** Mất nó là mất vĩnh viễn mọi trường nhạy cảm và mọi tệp đã mã hóa — không có đường khôi phục. Đó chính là thuộc tính khiến tính năng xóa triệt để hoạt động.
 
