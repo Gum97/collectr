@@ -191,7 +191,10 @@ POST   /api/v1/forms/{id}/draft/publish    → 201 {version_id, no}  (published 
 GET    /api/v1/forms/{id}/versions
 GET    /api/v1/forms/{id}/versions/{a}/diff/{b}  → phân loại breaking / non-breaking
 
-GET    /api/v1/forms/{id}/submissions?cursor=&filter=   → grid, column registry hợp nhất mọi version
+GET    /api/v1/forms/{id}/submissions?cursor=&q=        → grid, column registry hợp nhất mọi version
+                                                          q: khớp chuỗi con trên câu trả lời dạng chữ (bỏ dấu, không phân biệt hoa thường)
+                                                             + khớp CHÍNH XÁC email/SĐT định danh qua HMAC
+                                                             KHÔNG tìm trong field nhạy cảm — chúng nằm trong answers_enc
                                                           mỗi dòng kèm revision_count (vắng nghĩa là chưa từng sửa)
 GET    /api/v1/submissions/{id}/revisions               → lịch sử sửa, mới nhất trước, kèm cái gì đổi thành cái gì
 POST   /api/v1/forms/{id}/exports          → 202 {job_id}   (async; GHI AUDIT: truy cập hàng loạt DLCN)

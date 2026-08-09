@@ -387,6 +387,7 @@ func run() error {
 	// when an operator with submission.read_sensitive asks. Without this the
 	// column rendered as "left blank" for every respondent who did answer.
 	formSvc.SetSensitiveOpener(consentStore)
+	formSvc.SetSubjects(consentStore)
 	fileHandler.SetAudit(db, auditWriter)
 	fileHandler.RegisterAdmin(admin)
 	exportHandler.RegisterAdmin(admin)

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -426,7 +427,15 @@ func (h *Handler) submissions(w http.ResponseWriter, r *http.Request) {
 	reveal := r.URL.Query().Get("include_sensitive") == "true" &&
 		actor.Can(authn.CapSubmissionReadSensitive)
 
-	grid, err := h.svc.Submissions(r.Context(), actor.TenantID, formID, before, limit, reveal)
+	// Capped: a trigram search is only as fast as the pattern is selective, and
+	// a very long one turns into a scan. The cap is generous next to a phone
+	// number or a name, which is what this box is for.
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(query) > 200 {
+		query = query[:200]
+	}
+
+	grid, err := h.svc.Submissions(r.Context(), actor.TenantID, formID, before, limit, reveal, query)
 	if err != nil {
 		httpx.Logger(r.Context()).Error("building submission grid", "error", err)
 		httpx.Error(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")

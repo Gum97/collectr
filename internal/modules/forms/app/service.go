@@ -31,9 +31,17 @@ type Repository interface {
 	GetVersion(ctx context.Context, tenantID, versionID uuid.UUID) (store.Version, error)
 	ListVersions(ctx context.Context, tenantID, formID uuid.UUID) ([]store.Version, error)
 	ResolvePublic(ctx context.Context, publicID string) (store.PublicForm, error)
-	ListSubmissions(ctx context.Context, tenantID, formID uuid.UUID, before time.Time, limit int) ([]store.Submission, error)
+	ListSubmissions(ctx context.Context, tenantID, formID uuid.UUID, before time.Time, limit int, f store.SubmissionFilter) ([]store.Submission, error)
 	ListForms(ctx context.Context, tenantID uuid.UUID, projectID *uuid.UUID, limit int) ([]store.Summary, error)
 	ListRevisions(ctx context.Context, tenantID, submissionID uuid.UUID) ([]store.Revision, map[string]any, uuid.UUID, error)
+}
+
+// SubjectFinder maps an identifying value to an existing subject.
+//
+// Narrower than contracts.SubjectResolver on purpose: the grid must be able to
+// look somebody up and must not be able to create, re-key or unseal anybody.
+type SubjectFinder interface {
+	FindSubject(ctx context.Context, tenantID uuid.UUID, kind, value string) (contracts.Subject, error)
 }
 
 // Service authors and serves forms.
@@ -43,6 +51,7 @@ type Service struct {
 	docs             contracts.DocumentProvider
 	audit            contracts.AuditWriter
 	opener           contracts.SensitiveOpener
+	subjects         SubjectFinder
 }
 
 // SetSensitiveOpener attaches the decryptor for sealed answers.
@@ -50,6 +59,9 @@ type Service struct {
 // Without it the grid cannot show a sensitive answer at all, and says so rather
 // than reporting the question as unanswered.
 func (s *Service) SetSensitiveOpener(o contracts.SensitiveOpener) { s.opener = o }
+
+// SetSubjects supplies the lookup used to match a search against an identifier.
+func (s *Service) SetSubjects(f SubjectFinder) { s.subjects = f }
 
 // NewService returns a Service.
 func NewService(repo Repository, defaultRetention time.Duration) *Service {
@@ -279,7 +291,7 @@ type Cell struct {
 // Columns are the union across every version, and each cell carries why it is
 // empty. Merging the three kinds of emptiness into one blank would make the
 // grid read as though respondents skipped questions they were never shown.
-func (s *Service) Submissions(ctx context.Context, tenantID, formID uuid.UUID, before time.Time, limit int, revealSensitive bool) (Grid, error) {
+func (s *Service) Submissions(ctx context.Context, tenantID, formID uuid.UUID, before time.Time, limit int, revealSensitive bool, query string) (Grid, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
@@ -303,7 +315,22 @@ func (s *Service) Submissions(ctx context.Context, tenantID, formID uuid.UUID, b
 	}
 	columns := domain.BuildColumnRegistry(vs)
 
-	subs, err := s.repo.ListSubmissions(ctx, tenantID, formID, before, limit)
+	filter := store.SubmissionFilter{Text: query}
+	if q := strings.TrimSpace(query); q != "" && s.subjects != nil {
+		// The identifier is an HMAC, so the only way to match it is to hash the
+		// query and look for that hash. Both kinds are tried because the operator
+		// types what the caller read out, not which column it lives in -- and a
+		// form identified by phone still has people typing an email into the box.
+		for _, kind := range []string{"email", "phone"} {
+			sub, err := s.subjects.FindSubject(ctx, tenantID, kind, q)
+			if err != nil || sub.ID == uuid.Nil {
+				continue
+			}
+			filter.SubjectIDs = append(filter.SubjectIDs, sub.ID)
+		}
+	}
+
+	subs, err := s.repo.ListSubmissions(ctx, tenantID, formID, before, limit, filter)
 	if err != nil {
 		return Grid{}, err
 	}

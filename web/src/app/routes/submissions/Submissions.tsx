@@ -14,7 +14,7 @@
  * rows and an offset scan over that is both slow and unstable while new
  * submissions arrive at the top.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { api, type List } from '../../lib/api'
@@ -39,6 +39,7 @@ import {
   cursorForTo,
   registrySpan,
   type ApiRow,
+  type GridColumn,
   type GridPage,
 } from './columns'
 
@@ -127,6 +128,10 @@ function Grid({
   const [reveal, setReveal] = useState(false)
   const [revealPrompt, setRevealPrompt] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [search, setSearch] = useState('')
+  /** Debounced: the box sends on a pause, not on a keystroke. A trigram scan per
+   *  character is work nobody asked for and results that flicker while typing. */
+  const query = useDebounced(search, 300)
   const [rectifying, setRectifying] = useState<ApiRow | null>(null)
   const [history, setHistory] = useState<ApiRow | null>(null)
 
@@ -135,9 +140,10 @@ function Grid({
   const params = new URLSearchParams({ limit: String(PAGE_SIZE) })
   if (cursor) params.set('cursor', cursor)
   if (reveal) params.set('include_sensitive', 'true')
+  if (query.trim()) params.set('q', query.trim())
 
   const page = useQuery({
-    queryKey: ['submissions', formId, cursor, reveal],
+    queryKey: ['submissions', formId, cursor, reveal, query],
     queryFn: async () =>
       api.get<GridPage>(`/api/v1/forms/${formId}/submissions?${params.toString()}`),
   })
@@ -193,6 +199,22 @@ function Grid({
 
       <Card className="mb-3">
         <div className="flex flex-wrap items-end gap-3">
+          <Field
+            label="Tìm bản ghi"
+            hint="Bỏ dấu cũng tìm được — gõ “Nguyen” ra “Nguyễn”."
+          >
+            <input
+              className="input min-w-64"
+              placeholder="tên, email, số điện thoại…"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                // A new search starts at the newest page. Keeping the cursor
+                // would page through the old result set and show nothing.
+                setTrail([])
+              }}
+            />
+          </Field>
           <Field label="Từ ngày">
             <input
               type="date"
@@ -214,6 +236,18 @@ function Grid({
           {(from || to) && (
             <button type="button" className="btn" onClick={() => resetRange({ from: '', to: '' })}>
               Bỏ lọc ngày
+            </button>
+          )}
+          {search && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setSearch('')
+                setTrail([])
+              }}
+            >
+              Xoá tìm kiếm
             </button>
           )}
 
@@ -253,20 +287,29 @@ function Grid({
       {page.isError && <ErrorBanner error={page.error} retry={() => void page.refetch()} />}
 
       {page.data && clipped.rows.length === 0 && (
-        // Three different emptinesses, and saying the wrong one is a statement
+        // Four different emptinesses, and saying the wrong one is a statement
         // about the data rather than about the view. A page past the end used to
         // announce "biểu mẫu chưa nhận bản ghi nào" directly under a header
-        // reading "25 bản ghi đang hoạt động".
+        // reading "25 bản ghi đang hoạt động" -- and a search with no match did
+        // it again, which is how the fourth branch came to be here.
+        //
+        // The search case goes first: it is the narrowest statement, and it is
+        // the only one of the four that is about a question the reader just
+        // asked rather than about the form.
         <Empty
           title={
-            trail.length > 0
-              ? 'Hết bản ghi ở trang này'
-              : from || to
-                ? 'Không có bản ghi nào trong khoảng ngày này'
-                : 'Biểu mẫu chưa nhận bản ghi nào'
+            query.trim()
+              ? `Không có bản ghi nào khớp “${query.trim()}”`
+              : trail.length > 0
+                ? 'Hết bản ghi ở trang này'
+                : from || to
+                  ? 'Không có bản ghi nào trong khoảng ngày này'
+                  : 'Biểu mẫu chưa nhận bản ghi nào'
           }
           hint={
-            trail.length > 0 ? (
+            query.trim() ? (
+              <SearchScope sensitive={sensitive} />
+            ) : trail.length > 0 ? (
               <>
                 Bạn đã đi quá trang cuối.{' '}
                 <button
@@ -490,4 +533,56 @@ function FormPicker({
       )}
     </div>
   )
+}
+
+/**
+ * What the search did not look at.
+ *
+ * Shown with every "no match", because "không tìm thấy" is otherwise a claim
+ * the search cannot support. Sensitive answers are sealed under each subject's
+ * own key and no search can read them — so a record holding the typed value in
+ * one of those fields exists, is visible in the grid, and will never be
+ * returned by the box above it.
+ *
+ * The identifier has the opposite shape: it is stored only as an HMAC, which
+ * matches exactly or not at all. "0912 345" cannot find "0912345678" — not
+ * because the record is missing, but because a hash has no prefixes.
+ */
+function SearchScope({ sensitive }: { sensitive: GridColumn[] }) {
+  return (
+    <div className="grid gap-1.5 text-left">
+      <p>Trước khi kết luận là không có, đây là những gì ô tìm kiếm không nhìn tới:</p>
+      <ul className="ml-4 list-disc">
+        {sensitive.length > 0 && (
+          <li>
+            <SensitiveTag>không tìm được</SensitiveTag>{' '}
+            <span className="font-semibold">{sensitive.map((c) => c.label).join(', ')}</span> — niêm
+            phong bằng khoá riêng của từng chủ thể, không có khoá nào ở đây để mở. Bản ghi mang giá
+            trị bạn vừa gõ trong các ô này <span className="font-semibold">vẫn tồn tại</span> và vẫn
+            hiện trên lưới, chỉ là tìm không ra.
+          </li>
+        )}
+        <li>
+          Email và số điện thoại dùng làm định danh chỉ khớp{' '}
+          <span className="font-semibold">chính xác toàn bộ</span> — chúng chỉ được lưu dưới dạng
+          băm. Gõ “0912 345” không ra “0912345678”.
+        </li>
+        <li>
+          Câu trả lời dạng chọn được lưu bằng mã lựa chọn, không phải nhãn hiển thị. Tìm được phần
+          người điền <span className="font-semibold">tự gõ</span>.
+        </li>
+      </ul>
+      <p className="text-meta">Bộ lọc ngày vẫn đang áp dụng nếu bạn đã đặt.</p>
+    </div>
+  )
+}
+
+/** Delays a value until typing pauses. */
+function useDebounced<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(value), ms)
+    return () => clearTimeout(t)
+  }, [value, ms])
+  return settled
 }

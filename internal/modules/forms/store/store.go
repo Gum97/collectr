@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -363,7 +364,7 @@ func (s *Store) InsertSubmission(ctx context.Context, tx pgx.Tx, tenantID uuid.U
 }
 
 // ListSubmissions returns a page of responses, newest first.
-func (s *Store) ListSubmissions(ctx context.Context, tenantID, formID uuid.UUID, before time.Time, limit int) ([]Submission, error) {
+func (s *Store) ListSubmissions(ctx context.Context, tenantID, formID uuid.UUID, before time.Time, limit int, f SubmissionFilter) ([]Submission, error) {
 	const q = `
 		SELECT s.id, s.form_id, s.form_version_id, v.version_no, s.answers,
 		       s.visible_fields, s.status, s.submitted_at,
@@ -373,12 +374,13 @@ func (s *Store) ListSubmissions(ctx context.Context, tenantID, formID uuid.UUID,
 		FROM forms.submissions s
 		JOIN forms.form_versions v ON v.id = s.form_version_id
 		WHERE s.form_id = $1 AND s.status <> 'erased' AND s.submitted_at < $2
+		  AND ($4 = '' OR s.answers_text ILIKE forms.immutable_unaccent($4) ESCAPE '\' OR s.data_subject_id = ANY($5))
 		ORDER BY s.submitted_at DESC
 		LIMIT $3`
 
 	var out []Submission
 	err := s.db.InTenantTx(ctx, tenantID, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, q, formID, before, limit)
+		rows, err := tx.Query(ctx, q, formID, before, limit, f.textPattern(), f.SubjectIDs)
 		if err != nil {
 			return err
 		}
@@ -487,4 +489,34 @@ func (s *Store) ListRevisions(ctx context.Context, tenantID, submissionID uuid.U
 		return nil, nil, uuid.Nil, fmt.Errorf("listing revisions: %w", err)
 	}
 	return revs, current, formID, nil
+}
+
+// SubmissionFilter narrows the grid.
+type SubmissionFilter struct {
+	// Text is matched against the answers the respondent typed, ignoring case
+	// and diacritics. Both sides are folded: the column when it is generated and
+	// the query in the WHERE clause. Folding one side only would mean typing the
+	// name correctly, with its accents, is the way to fail to find it. Empty means no text condition at all -- not "match the
+	// empty string", which would be every row.
+	Text string
+	// SubjectIDs are subjects whose identifier matched the query exactly. The
+	// identifier is only ever stored as an HMAC, so it can be matched but never
+	// scanned: hashing "0912 345" produces a hash of "0912 345", not a prefix of
+	// anything. Kept beside the text condition and OR-ed with it so a phone
+	// number finds the record whether it was the identifier or just an answer.
+	SubjectIDs []uuid.UUID
+}
+
+// textPattern renders Text as an ILIKE pattern with the wildcards escaped.
+//
+// Without escaping, a "%" typed into the search box matches every record, and
+// "_" matches any character -- so a search would silently return rows that do
+// not contain what was typed. Both appear in real input; "%" is in more email
+// addresses than one would like.
+func (f SubmissionFilter) textPattern() string {
+	if strings.TrimSpace(f.Text) == "" {
+		return ""
+	}
+	r := strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+	return "%" + r.Replace(strings.TrimSpace(f.Text)) + "%"
 }
