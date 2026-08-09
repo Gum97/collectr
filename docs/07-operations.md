@@ -127,6 +127,38 @@ Prometheus + Grafana + `/metrics` là đủ, đóng gói sẵn trong `docker-com
 
 > ⚠️ **Mất `TENANT_KEK` = mất vĩnh viễn mọi field nhạy cảm và mọi file đã mã hóa.** Không có đường khôi phục — đó chính là thuộc tính khiến crypto-shredding hoạt động. Backup KEK phải nằm ở nơi khác backup DB, nếu không cả hai cùng mất trong một sự cố và tính năng "xóa triệt để" trở thành "mất trắng".
 
+### Cái đang ship, ngay hôm nay
+
+Bảng trên là kiến trúc đích. Thứ có sẵn trong repo là hai script làm được việc ngay từ `docker compose` mặc định:
+
+```bash
+./deploy/backup.sh [thư-mục]      # → .dump + .kek, tự kiểm bản dump đọc được
+./deploy/restore.sh <tệp .dump>   # ghi đè DB, rồi tự kiểm chứng
+```
+
+`backup.sh` sinh **hai** tệp và cần cả hai. Bản dump không chứa `TENANT_KEK`; khôi phục thiếu khoá cho ra một hệ thống đăng nhập được, lưới đủ dòng, và mọi field nhạy cảm hỏng vĩnh viễn — **không có thông báo lỗi nào ở giữa**. Vì thế script từ chối chạy nếu `.env` không có `TENANT_KEK`, thay vì lặng lẽ tạo ra một bản sao lưu chỉ khôi phục được một nửa.
+
+### Kết quả diễn tập (2026-08-09)
+
+Chạy trên `docker compose` mặc định, DB **156.209 submission / 145 MB**:
+
+| Bước | Thời gian |
+|---|---|
+| `backup.sh` (dump + kiểm đọc được) | **9,2s** |
+| `restore.sh` (dừng app → restore → khởi động → kiểm) | **24s** |
+
+Kiểm chứng sau khôi phục:
+
+| | |
+|---|---|
+| submission / chủ thể / audit | 156.209 / 156.084 / 156.226 |
+| chuỗi hash audit | **seq liền mạch 1..156.226** |
+| DEK còn bọc | 78.329 |
+| `/healthz` | 200 |
+| **field nhạy cảm giải mã được** | ✅ `state = answered`, đọc ra giá trị thật |
+
+Dòng cuối là dòng duy nhất chứng minh bản khôi phục **dùng được** chứ không chỉ **tồn tại**. Đếm số dòng, `/healthz` xanh và chuỗi audit liền mạch đều sẽ báo thành công y hệt khi `TENANT_KEK` sai — chỉ có việc thực sự mở một field nhạy cảm mới phân biệt được hai trường hợp đó.
+
 ### Restore
 
 - **Diễn tập restore hằng tháng** trên môi trường riêng, bấm giờ. Backup chưa từng restore không phải backup.
@@ -136,7 +168,7 @@ Prometheus + Grafana + `/metrics` là đủ, đóng gói sẵn trong `docker-com
 
 ### Migration
 
-- `goose` hoặc `atlas`, migration versioned trong git, chạy tự động lúc app khởi động (có advisory lock chống đua giữa nhiều instance).
+- Migration là các tệp `.sql` đánh số trong `internal/migrations/`, nhúng thẳng vào binary bằng `go:embed` và chạy tự động lúc app khởi động; trạng thái nằm ở `core.schema_migrations`, có advisory lock chống đua giữa nhiều instance. Không dùng `goose`/`atlas` — binary tự mang lược đồ của nó, nên không có bước "nhớ chạy migration" tách rời để quên.
 - **Expand–contract** cho mọi thay đổi phá vỡ: thêm cột nullable → backfill → chuyển đọc/ghi → xóa cột cũ ở release sau. Không downtime.
 - Với `analytics.events` đã partition: tạo partition trước 7 ngày bằng job, không để tới lúc insert mới phát hiện thiếu.
 - Migration đụng `audit.entries` phải review đặc biệt — mọi thay đổi cấu trúc đều có nguy cơ làm gãy hash chain. Thêm cột thì canonical JSON phải giữ nguyên tập trường cũ.
@@ -181,7 +213,7 @@ Một cài đặt mới chưa có ai sở hữu. Instance nằm sau TLS tự đ�
 - [ ] Quyết định `PUBLIC_WRITE_IP_LIMIT` cho tình huống thật: 60/phút mỗi dải /24 là đúng cho form trên website, **quá thấp** cho gian hàng hội chợ nơi mọi người đi chung một NAT
 - [ ] Đo lại trên hạ tầng tách rời (client và server khác máy)
 - [ ] Load-test upload tệp 1 MB ở tải cao
-- [ ] Diễn tập restore thành công, có bấm giờ
+- [x] Diễn tập restore thành công, có bấm giờ → backup 9,2s / restore 24s trên 156k bản ghi, field nhạy cảm giải mã được ([kết quả](#kết-quả-diễn-tập-2026-08-09))
 - [ ] `TENANT_KEK` đã backup **ngoài** backup DB, đã kiểm tra khôi phục được
 - [ ] `govulncheck` sạch, base image distroless đã pin digest
 - [ ] Alert `dsr_overdue_count > 0` đã đấu vào kênh trực

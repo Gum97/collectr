@@ -4,7 +4,9 @@
 
 **Xin đừng mở issue công khai cho lỗ hổng bảo mật.**
 
-Gửi báo cáo qua GitHub Security Advisory (`Security` → `Report a vulnerability`) hoặc email `security@<domain>`.
+Gửi báo cáo qua **GitHub Security Advisory**: tab `Security` → `Report a vulnerability`. Kênh này riêng tư, chỉ người bảo trì repo đọc được, và đã được bật.
+
+> Nếu bạn fork hoặc tự vận hành bản riêng, **hãy tự bật kênh này** (`Settings` → `Advanced Security` → `Private vulnerability reporting`) hoặc thay bằng địa chỉ email bạn thật sự đọc. Một chính sách bảo mật trỏ tới nơi không ai nhận được gì thì tệ hơn là không có chính sách: người báo lỗi tin rằng họ đã báo rồi.
 
 Vui lòng kèm: mô tả lỗ hổng, các bước tái hiện, tác động bạn đánh giá, và phiên bản/cấu hình liên quan.
 

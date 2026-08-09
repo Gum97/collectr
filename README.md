@@ -233,13 +233,12 @@ Lý do đầy đủ ở [docs/05-architecture.md](docs/05-architecture.md).
 - [x] **v0.20** — Sửa chuỗi proxy: giữ IP khách sau Cloudflare/nginx/tunnel, và hiện IP quan sát được ra giao diện
 - [x] **v0.21** — Nhân viên sửa hộ khi chủ thể yêu cầu: bắt buộc ghi cách xác minh, sửa và yêu cầu vào cùng một transaction, chủ thể được báo về **cả địa chỉ cũ lẫn mới**
 - [x] **v0.22** — Màn lịch sử chỉnh sửa (trước đó chỉ đọc được bằng SQL); sửa ô định danh thì khoá tra cứu của chủ thể đi theo, nếu không họ mất quyền vào chính dữ liệu của mình
+- [x] **v0.24** — Script sao lưu/khôi phục có kiểm chứng, và diễn tập thật có bấm giờ trên 156k bản ghi
 - [x] **v0.23** — Tìm kiếm ở màn Dữ liệu: bỏ dấu hai chiều (“Nguyen” ra “Nguyễn”), khớp chính xác theo định danh đã băm, và **nói thẳng ô nào không tìm được** thay vì để “không tìm thấy” nói thay
 
 **v1.0 còn lại:**
 
 - [ ] Đo lại trên hạ tầng tách rời — client và server khác máy. Số hiện tại đo trên cùng một Docker VM nên là **sàn, không phải trần**. Chênh lệch redirect giữa các lần đo thì đã đo được: 7 lượt cho p99 **4,3–9,9ms** trong khi **trung vị đứng yên**, nên đó là độ tản của môi trường chứ không phải hồi quy. Nguyên nhân cái đuôi vẫn chưa xác định — giả thuyết "do worker" đã bị bác bỏ bằng thực nghiệm.
-- [ ] Diễn tập khôi phục sao lưu, có bấm giờ.
-- [ ] Chốt chính sách vá lỗ hổng trước khi cắt release đầu tiên: `SECURITY.md` hiện chưa nói ai được báo, trong bao lâu, và bản nào còn được hỗ trợ.
 
 Ngoài phạm vi hiện tại: A/B testing, đồng bộ CRM, email marketing, biểu mẫu đa ngôn ngữ, sinh hồ sơ đánh giá tác động tự động.
 
