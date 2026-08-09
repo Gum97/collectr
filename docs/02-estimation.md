@@ -79,11 +79,23 @@ Mục tiêu: p99 < 80ms @ 500 RPS.
 
 | Giai đoạn | p90 | p95 | **p99** | lỗi |
 |---|---|---|---|---|
-| burst 500 RPS × 60s | 1,88ms | 2,68ms | **7,15ms** | 0 / 30.001 |
+| burst 500 RPS × 60s | 1,7–1,9ms | 2,1–2,9ms | **4,3 – 9,9ms** | 0 / 30.001 |
 
-**Dư ~11 lần.** Tải gồm 2% code không tồn tại (mô phỏng dò quét) và 2% link hết hạn; negative cache khiến cả hai không chạm database.
+**Dư 8–19 lần.** Tải gồm 2% code không tồn tại (mô phỏng dò quét) và 2% link hết hạn; negative cache khiến cả hai không chạm database.
 
-Chậm hơn lần đo trước (2,23ms → 7,15ms) và tôi **không giải thích được chênh lệch này bằng dữ liệu đang có**. Cùng ngưỡng, cùng kịch bản, khác thời điểm và khác trạng thái máy. Đừng coi một trong hai là "đúng" cho tới khi đo được trên hạ tầng tách rời — đó chính là mục còn treo trong checklist go-live.
+### Về chênh lệch giữa các lần đo
+
+Bản trước ghi "2,23ms → 7,15ms, không giải thích được". Đã chạy **7 lượt liên tiếp** (2026-08-09) để đo chính độ tản đó:
+
+| | avg | median | p99 | max |
+|---|---|---|---|---|
+| khoảng quan sát | 0,78 – 1,33ms | **0,58 – 0,76ms** | **4,27 – 9,89ms** | 22,8 – 98,6ms |
+
+**Trung vị gần như không đổi trong khi p99 xê dịch hơn hai lần.** Nếu đường xử lý redirect chậm đi thì trung vị phải chạy theo — nó không chạy. Nên chênh lệch 2,23 → 7,15 của bản trước **nằm gọn trong độ tản bình thường của môi trường này**, không phải một hồi quy.
+
+Nguyên nhân của cái đuôi thì **vẫn chưa xác định**. Giả thuyết "do worker chạy nền" đã được kiểm và **bác bỏ**: dừng worker cho p99 6,01 và 6,64ms, còn lượt đối chứng bật worker lại cho **4,27ms — thấp nhất trong cả 7 lượt**. Lưu ý lượt đối chứng chạy sau cùng nên có thể hưởng lợi từ cache đã ấm; đó là điểm yếu của phép thử này.
+
+Kết luận dùng được: **coi p99 redirect là "dưới 10ms trên máy này", đừng trích một con số lẻ.** Cần một con số chắc thì phải đo trên hạ tầng tách rời — vẫn là mục treo trong checklist go-live.
 
 ### Render biểu mẫu — `load/render.js`
 
@@ -91,7 +103,9 @@ Mục tiêu: p99 < 300ms @ 200 RPS.
 
 | p90 | p95 | **p99** | lỗi |
 |---|---|---|---|
-| 4,51ms | 5,85ms | **10,22ms** | 0 / 4.501 |
+| 4,11ms | 5,14ms | **12,4ms** | 0 / 4.501 |
+
+> Lần đầu chạy lại kịch bản này tôi **quên truyền `FORM`**, nên nó gọi `fm_test` — một biểu mẫu không tồn tại — và nhận 404 suốt. Hai trong ba check vẫn **xanh**, vì chúng viết dạng `r.status !== 200 || …`: một check chỉ khẳng định điều gì đó *khi* request thành công sẽ báo pass cho lượt chạy không đo được gì. Chỉ có `http_req_failed = 100%` lộ ra. Truyền `-e FORM=$LOAD_FORM` mới là đo thật.
 
 ### Submit — `load/submit.js`
 
@@ -106,15 +120,23 @@ Nên phải nói rõ **con số nào đo dưới điều kiện nào**:
 | Mặc định (`PUBLIC_WRITE_IP_LIMIT=60`) | **60 lượt gửi/phút mỗi dải /24** — đây là con số vận hành |
 | Nâng giới hạn (`=1000000`) | xem bảng dưới — đây là năng lực ứng dụng |
 
-| RPS yêu cầu | p95 | **p99** | throughput thực | ghi chú |
-|---|---|---|---|---|
-| 100 | 5,29ms | **10,95ms** | 100/s | sạch |
-| 300 | 3,91ms | **10,82ms** | 300/s | sạch |
-| 600 | 4,77ms | **15,45ms** | 600/s | sạch |
-| 900 | 47,3ms | **175ms** | 890/s | bắt đầu drop iteration |
-| 1200 | 314ms | **428ms** | 1.120/s | bão hòa, median 236ms |
+Đo lại ngày 2026-08-09 (cột **p99 (08-09)**), trên DB đã có sẵn dữ liệu chứ không trắng — xem ghi chú bên dưới:
 
-**Đầu gối nằm giữa 600 và 900/s.** Ở 1200 RPS server vẫn không trả lỗi nào — nó chậm đi chứ không sụp. So với burst thiết kế 50–100/s: dư khoảng 6–9 lần **nếu** giới hạn được nâng; còn với cấu hình mặc định thì giới hạn mới là thứ quyết định, không phải năng lực máy.
+| RPS yêu cầu | p95 (08-08) | p99 (08-08) | **p99 (08-09)** | throughput thực (08-09) | ghi chú |
+|---|---|---|---|---|---|
+| 100 | 5,29ms | 10,95ms | **9,03ms** | 100/s | sạch, 0 lỗi |
+| 300 | 3,91ms | 10,82ms | **8,67ms** | 300/s | sạch, 0 lỗi |
+| 600 | 4,77ms | 15,45ms | **28,7ms** | 600/s | sạch, 0 lỗi |
+| 900 | 47,3ms | 175ms | **379ms** | 887/s | 431 iteration bị bỏ |
+| 1200 | 314ms | 428ms | **1,03s** | **598/s** | 35.811 iteration bị bỏ |
+
+**Đầu gối vẫn nằm giữa 600 và 900/s** — hai lần đo cách nhau một ngày đồng ý ở điểm này.
+
+Nhưng ở 1200 RPS hai lần đo **khác nhau về chất**: bản 08-08 vẫn đạt 1.120/s, bản 08-09 chỉ còn **598/s — thấp hơn cả lượt đo 600 RPS**. Qua đầu gối, hệ thống không chỉ chậm đi mà **ngừng tăng thông lượng**.
+
+Điều kiện khác nhau và nó giải thích được phần lớn: các lượt đo hôm nay chạy nối tiếp nhau và **chính chúng bơm dữ liệu vào DB** — `forms.submissions` đi từ 6.149 lên **156.089 dòng (126 MB)** trong lúc đo. Bảng 08-08 chạy trên DB trắng. Vì vậy hai cột không phải hai lần đo cùng một hệ thống, và cột mới **gần với vận hành thật hơn** ở chỗ nó có dữ liệu sẵn.
+
+Ở mọi mức, server **không trả một lỗi nào** — nó chậm lại và bỏ iteration ở phía sinh tải, chứ không sụp. So với burst thiết kế 50–100/s: dư 6–9 lần **nếu** giới hạn được nâng; với cấu hình mặc định thì giới hạn mới là thứ quyết định, không phải năng lực máy.
 
 Advisory lock của audit chain (theo tenant) không thành nút cổ chai ở mức này — phần việc trong lock chỉ là một SELECT + một INSERT. Nhưng nó là trần **theo tenant**: một tổ chức duy nhất vượt xa mức này sẽ gặp nó trước.
 

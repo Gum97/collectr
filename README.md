@@ -237,7 +237,7 @@ Lý do đầy đủ ở [docs/05-architecture.md](docs/05-architecture.md).
 
 **v1.0 còn lại:**
 
-- [ ] Đo lại trên hạ tầng tách rời — client và server khác máy. Số hiện tại đo trên cùng một Docker VM nên là **sàn, không phải trần**, và chênh lệch redirect 2,23ms → 7,15ms giữa hai lần đo vẫn **chưa ai giải thích được**.
+- [ ] Đo lại trên hạ tầng tách rời — client và server khác máy. Số hiện tại đo trên cùng một Docker VM nên là **sàn, không phải trần**. Chênh lệch redirect giữa các lần đo thì đã đo được: 7 lượt cho p99 **4,3–9,9ms** trong khi **trung vị đứng yên**, nên đó là độ tản của môi trường chứ không phải hồi quy. Nguyên nhân cái đuôi vẫn chưa xác định — giả thuyết "do worker" đã bị bác bỏ bằng thực nghiệm.
 - [ ] Diễn tập khôi phục sao lưu, có bấm giờ.
 - [ ] Chốt chính sách vá lỗ hổng trước khi cắt release đầu tiên: `SECURITY.md` hiện chưa nói ai được báo, trong bao lâu, và bản nào còn được hỗ trợ.
 
